@@ -26,7 +26,7 @@
     --bg2:#4889c5; 
     --bg-header: rgba(72, 137, 197, 0.95);
 
-    /* CORREÇÃO: PDFs – amarelo claro */
+    /* PDFs – amarelo claro */
     --pdf-bg:#FFFFE0;  /* Amarelo claro (Light Yellow) */
     --pdf-bd:#FAFAD2;  /* Borda amarelada clara */
   }
@@ -338,41 +338,33 @@ function call(endpoint, payload){
 /* ============================ */
 
 // Post-It
-function toggleNoteWrap(explicitOpen){
+function toggleNoteWrap(isCloseButton){
     const noteWrap = $('#noteWrap');
+    const noteArea = $('#noteArea');
     const isVisible = noteWrap.style.display === 'block';
 
-    if (explicitOpen && isVisible) { 
+    if (isCloseButton || isVisible) { 
         show(noteWrap, false); 
-    } else if (explicitOpen || !isVisible) { 
+    } else { 
         show(noteWrap, true); 
-    } else {
-        show(noteWrap, false);
-    }
-    
-    if(noteWrap.style.display === 'block') { 
-        $('#noteArea').focus(); 
+        noteArea.focus(); 
     }
 }
 function clearNote() {
     const noteArea = $('#noteArea');
     noteArea.value=""; localStorage.removeItem('ric_note');
+    // Não fecha, só limpa
 }
 
 // Calculadora
-function toggleCalcWrap(explicitOpen){
+function toggleCalcWrap(isCloseButton){
     const calcWrap = $('#calcWrap');
     const isVisible = calcWrap.style.display === 'block';
     
-    if (explicitOpen && isVisible) { 
+    if (isCloseButton || isVisible) { 
         show(calcWrap, false); 
-    } else if (explicitOpen || !isVisible) { 
+    } else { 
         show(calcWrap, true); 
-    } else {
-        show(calcWrap, false);
-    }
-
-    if(calcWrap.style.display === 'block') { 
         refresh(); 
     }
 }
@@ -592,21 +584,20 @@ async function doCRION(){
 // ----------------------------------------------------
 window.onload = function() {
     
-    // Anexação dos botões de Toggle
-    document.getElementById('toggleNote').addEventListener('click', function() { toggleNoteWrap(true); });
-    document.getElementById('toggleCalc').addEventListener('click', function() { toggleCalcWrap(true); });
-    
-    // Anexação dos botões de Fechar/Limpar (Widgets Internos)
-    document.getElementById('closeNote').addEventListener('click', function() { toggleNoteWrap(false); });
-    document.getElementById('clearNote').addEventListener('click', clearNote);
-    document.getElementById('closeCalc').addEventListener('click', function() { toggleCalcWrap(false); });
-
-    // Anexação dos botões principais da grade
+    // Configuração dos botões principais
     document.getElementById('btnAlert').addEventListener('click', doAlerts);
     document.getElementById('btnSites').addEventListener('click', doSites);
     document.getElementById('btnCRION').addEventListener('click', doCRION);
     document.getElementById('btnFeedback').addEventListener('click', doFeedback);
 
+    // Configuração dos Widgets (Post-it / Calculadora)
+    document.getElementById('toggleNote').addEventListener('click', function() { toggleNoteWrap(false); });
+    document.getElementById('closeNote').addEventListener('click', function() { closeWidget('noteWrap'); });
+    document.getElementById('clearNote').addEventListener('click', clearNote);
+    
+    document.getElementById('toggleCalc').addEventListener('click', function() { toggleCalcWrap(false); });
+    document.getElementById('closeCalc').addEventListener('click', function() { closeWidget('calcWrap'); });
+    
     // Calculadora Key Presses
     const keys = document.getElementById('keys');
     if (keys) {
@@ -616,7 +607,7 @@ window.onload = function() {
         });
     }
     
-    // Post-it Persistence and initial load
+    // Post-it Persistence
     const noteArea = document.getElementById('noteArea');
     if (noteArea) {
         noteArea.value = localStorage.getItem('ric_note') || "";
@@ -631,6 +622,11 @@ window.onload = function() {
     const qCRION = document.getElementById('qCRION');
     const btnCRION = document.getElementById('btnCRION');
     if(qCRION && btnCRION) qCRION.addEventListener('keydown', e=>{ if(e.key==='Enter') btnCRION.click(); });
+
+    // Helper para fechar explicitamente qualquer widget
+    function closeWidget(wrapId) {
+        document.getElementById(wrapId).style.display = 'none';
+    }
 };
 </script>
 </body>
