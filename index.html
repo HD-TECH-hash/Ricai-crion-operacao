@@ -15,7 +15,7 @@
 
     --postit:#fddb56;
     --calc:#5fa5fa;
-    --feedback:#38bdf8; /* Cor azul claro para o Feedback (novo) */
+    --feedback:#38bdf8; 
 
     --ink:#0f172a;
     --muted:#64748b;
@@ -23,12 +23,8 @@
 
     /* Fundo ÚNICO SOLIDO (Cor: --bg1) */
     --bg1:#4889c5;
-    --bg2:#4889c5; /* Corrigido para ser igual ao bg1 */
+    --bg2:#4889c5; 
     --bg-header: rgba(72, 137, 197, 0.95);
-    
-    /* PDFs – laranja bem clarinho */
-    --pdf-bg:#fff7ed;   /* orange-50 */
-    --pdf-bd:#ffedd5;   /* orange-100 */
   }
 
   *{box-sizing:border-box}
@@ -36,7 +32,7 @@
   body{
     margin:0;color:var(--ink);
     font:14px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial;
-    /* CORREÇÃO: Fundo com cor sólida, removendo o degradê e a vinheta */
+    /* Fundo com cor sólida */
     background: var(--bg1);
   }
 
@@ -49,7 +45,7 @@
     width:100%;
     padding:14px 0;
     
-    /* CORREÇÃO: Usando cor sólida de fundo */
+    /* Usando cor sólida de fundo */
     background:var(--bg-header); 
     backdrop-filter: blur(8px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -71,7 +67,7 @@
   .floatbar-inner > *{ pointer-events:auto; }
 
   .logo-left{height:44px; object-fit:contain; filter:drop-shadow(0 4px 10px #0002)}
-  /* CORREÇÃO: Altura reduzida para evitar truncamento */
+  /* CORREÇÃO HDSTEC: Altura reduzida para 40px */
   .logo-right{height:40px; justify-self:end; object-fit:contain; filter:drop-shadow(0 4px 10px #0002)}
 
   .tools{display:flex; gap:10px; justify-self:end}
@@ -186,13 +182,18 @@
   #feedbackLabel {
       background: var(--feedback); 
       color: #fff;
-      padding: 4px 10px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      font-size: 13px;
+      padding: 10px 18px; /* Aumentado padding para ficar mais parecido com o screenshot */
+      border-radius: 16px; /* Ajustado para bordas mais suaves */
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      font-size: 16px; /* Aumentado tamanho da fonte */
       font-weight: 700;
       text-align: center;
       cursor: pointer; 
+      white-space: nowrap;
+      transition: background 0.15s;
+  }
+  #feedbackLabel:hover {
+      background: #258ee4; /* Tom levemente mais escuro no hover */
   }
 
   #feedbackIcon {
@@ -239,9 +240,9 @@
 <body>
 
   <div id="feedbackWidget">
-    <div id="feedbackLabel">Feedback</div>
+    <div id="feedbackLabel" onclick="toggleFeedbackForm()">Feedback</div>
     
-    <div id="feedbackIcon">
+    <div id="feedbackIcon" onclick="toggleFeedbackForm()">
       <img src="https://raw.githubusercontent.com/HD-TECH-hash/Ricai-crion-operacao/main/rr.png" alt="RIC AI">
     </div>
   </div>
@@ -453,15 +454,6 @@ function toggleFeedbackForm(){
         feedbackStatus.textContent = "Sua opinião nos ajuda a melhorar!";
     }
 }
-
-// CORREÇÃO: Atribuição de clique via JavaScript para maior robustez
-document.addEventListener('DOMContentLoaded', () => {
-    const feedbackLabel = $('#feedbackLabel');
-    const feedbackIcon = $('#feedbackIcon');
-    if (feedbackLabel) feedbackLabel.addEventListener('click', toggleFeedbackForm);
-    if (feedbackIcon) feedbackIcon.addEventListener('click', toggleFeedbackForm);
-});
-
 
 $('#btnCloseFeedbackForm').onclick = ()=>{ 
     show(feedbackFormWrap, false);
