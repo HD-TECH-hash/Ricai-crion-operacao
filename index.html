@@ -62,7 +62,7 @@
       max-width: 1260px;
       margin: 0 auto;
       padding: 0 16px;
-      pointer-events: none; 
+      pointer-events: none;
   }
   .floatbar-inner > *{ pointer-events:auto; }
 
@@ -333,27 +333,26 @@ function call(endpoint, payload){
 /* ============================ */
 /* ======= WIDGETS (POST-IT / CALC) FUNCTIONS ======= */
 /* ============================ */
-const noteWrap = $('#noteWrap'), noteArea = $('#noteArea');
-const calcWrap = $('#calcWrap');
-const keys = $('#keys');
 
 // Post-It
 function toggleNoteWrap(explicitOpen){
+    const noteWrap = $('#noteWrap');
+    const noteArea = $('#noteArea');
     const isVisible = noteWrap.style.display === 'block';
-    if(explicitOpen && isVisible) { show(noteWrap, false); } /* Fecha se já aberto e chamado para abrir */
+    if(explicitOpen && isVisible) { show(noteWrap, false); }
     else { show(noteWrap, !isVisible); }
     if(noteWrap.style.display === 'block') { noteArea.focus(); }
 }
 function clearNote() {
+    const noteArea = $('#noteArea');
     noteArea.value=""; localStorage.removeItem('ric_note');
 }
-noteArea.value = localStorage.getItem('ric_note') || "";
-noteArea.addEventListener('input', ()=> localStorage.setItem('ric_note', noteArea.value));
 
 // Calculadora
 function toggleCalcWrap(explicitOpen){
+    const calcWrap = $('#calcWrap');
     const isVisible = calcWrap.style.display === 'block';
-    if(explicitOpen && isVisible) { show(calcWrap, false); } /* Fecha se já aberto e chamado para abrir */
+    if(explicitOpen && isVisible) { show(calcWrap, false); }
     else { show(calcWrap, !isVisible); }
     if(calcWrap.style.display === 'block') { refresh(); }
 }
@@ -374,25 +373,35 @@ function press(k){
     calc.buf=String(v); calc.op=null; calc.fresh=true; return refresh();
   }
 }
-// NOVO: Adiciona listener para teclas da calculadora após o DOM carregar
-document.addEventListener('DOMContentLoaded', () => {
+// Adiciona listener para teclas da calculadora ao carregar a janela
+window.onload = function() {
+    const keys = $('#keys');
+    const noteArea = $('#noteArea');
+    
+    // Configura listeners do Post-it para persistir no local storage
+    if (noteArea) {
+        noteArea.value = localStorage.getItem('ric_note') || "";
+        noteArea.addEventListener('input', ()=> localStorage.setItem('ric_note', noteArea.value));
+    }
+
+    // Configura listeners da Calculadora
     if (keys) {
         keys.addEventListener('click', e => { 
             const k = e.target.dataset.k; 
             if(k) press(k); 
         });
     }
-});
+};
 
 
 /* ============================ */
 /* ======= FEEDBACK CARD FUNCTION ======= */
 /* ============================ */
-const qFeedback = $('#qFeedback');
-const feedbackStatus = $('#feedbackStatus');
-const feedbackBusy = $('#feedbackBusy');
-
 async function doFeedback(){
+  const qFeedback = $('#qFeedback');
+  const feedbackStatus = $('#feedbackStatus');
+  const feedbackBusy = $('#feedbackBusy');
+
   const q = (qFeedback.value||'').trim();
   const placeholderText = qFeedback.placeholder;
 
@@ -426,7 +435,8 @@ async function doFeedback(){
 /* ============================ */
 async function doAlerts(){
   const msg=$('#alertMsg'), resp=$('#alertResp');
-  show(msg,false); show(resp,false); show($('#alertBusy'),true);
+  const alertBusy = $('#alertBusy');
+  show(msg,false); show(resp,false); show(alertBusy,true);
   try{
     const r = await call('getalert',{});
     if(!r || r.ok===false){ msg.textContent="Falha ao consultar."; show(msg,true); return; }
@@ -434,15 +444,14 @@ async function doAlerts(){
     msg.textContent = "🚨 " + String(r.mensagem||"—").toUpperCase(); show(msg,true);
     if(r.responsavel){ resp.textContent = String(r.responsavel||"").toLowerCase(); show(resp,true); }
   }catch(e){ msg.textContent="Erro: "+(e.message||e); show(msg,true);
-  }finally{ show($('#alertBusy'),false); }
+  }finally{ show(alertBusy,false); }
 }
 
 /* ============================ */
-/* ======= SITES FUNCTIONS ======= */
+/* ======= SITES FUNCTIONS (Inclui PDF Search) ======= */
 /* ============================ */
 const AFFIX_CSV_URL = "data/affix/affix_pdfs_manifest.csv";
 let AFFIX_PDFS = [];
-
 async function loadAffixCSV(){
   if (AFFIX_PDFS.length) return;
   const res = await fetch(AFFIX_CSV_URL);
@@ -518,17 +527,19 @@ async function searchAffixPDFs(q){
 
 async function doSites(){
   const q=($('#qSites').value||'').trim();
+  const sitesBusy = $('#sitesBusy');
+  const outSites = $('#outSites');
   searchAffixPDFs(q);
-  if(!q){ $('#outSites').textContent='Digite a pergunta.'; return; }
-  show($('#sitesBusy'),true); $('#outSites').textContent='—';
+  if(!q){ outSites.textContent='Digite a pergunta.'; return; }
+  show(sitesBusy,true); outSites.textContent='—';
   try{
     const qRich = q + " — FORMATO: responda em português com texto útil e liste as URLs oficiais no final. Substitua observações por: 'Fontes oficiais Affix, Alter, Hapvida'.";
     const r = await call('chat',{q:qRich});
     const txt = (r && r.text) ? r.text : '—';
     const html = String(txt).replace(/(https?:\/\/[^\s]+)/g, m=>`<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
-    $('#outSites').innerHTML = html;
-  }catch(e){ $('#outSites').textContent='Erro: '+(e.message||e);
-  }finally{ show($('#sitesBusy'),false); }
+    outSites.innerHTML = html;
+  }catch(e){ outSites.textContent='Erro: '+(e.message||e);
+  }finally{ show(sitesBusy,false); }
 }
 
 
@@ -537,12 +548,16 @@ async function doSites(){
 /* ============================ */
 async function doCRION(){
   const q=($('#qCRION').value||'').trim();
-  if(!q){ $('#crionStatus').textContent='Digite um termo.'; return; }
-  show($('#crionBusy'),true); $('#crionStatus').textContent='Listando arquivos…'; $('#crionList').innerHTML="";
+  const crionStatus = $('#crionStatus');
+  const crionList = $('#crionList');
+  const crionBusy = $('#crionBusy');
+
+  if(!q){ crionStatus.textContent='Digite um termo.'; return; }
+  show(crionBusy,true); crionStatus.textContent='Listando arquivos…'; crionList.innerHTML="";
   try{
     const res = await call('searchcrion',{q});
-    if(!res || res.ok===false){ $('#crionStatus').textContent='Erro ao buscar: '+(res&&res.message?res.message:''); return; }
-    const items=res.items||[]; $('#crionStatus').textContent=`Resultados: ${items.length}`;
+    if(!res || res.ok===false){ crionStatus.textContent='Erro ao buscar: '+(res&&res.message?res.message:''); return; }
+    const items=res.items||[]; crionStatus.textContent=`Resultados: ${items.length}`;
     const frag=document.createDocumentFragment();
     items.forEach((it,idx)=>{
       const li=document.createElement('li'); li.style.padding="10px 0"; li.style.borderTop="1px solid var(--line)"; li.id='crion_'+idx;
@@ -551,7 +566,7 @@ async function doCRION(){
                    <div class="hint" id="snip_crion_${idx}">Carregando prévias…</div>`;
       frag.appendChild(li);
     });
-    $('#crionList').appendChild(frag);
+    crionList.appendChild(frag);
     if(items.length){
       let from=0;
       while(from < items.length){
@@ -562,10 +577,10 @@ async function doCRION(){
         });
         from = r.to;
       }
-      $('#crionStatus').textContent += " • prévias completas";
+      crionStatus.textContent += " • prévias completas";
     }
-  }catch(e){ $('#crionStatus').textContent='Erro: '+(e.message||e);
-  }finally{ show($('#crionBusy'),false); }
+  }catch(e){ crionStatus.textContent='Erro: '+(e.message||e);
+  }finally{ show(crionBusy,false); }
 }
 </script>
 </body>
