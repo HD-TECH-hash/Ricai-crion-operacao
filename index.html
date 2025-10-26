@@ -92,9 +92,6 @@
   /* LAYOUT CORRIGIDO: Alerta | Sites, abaixo: RR | Procedimentos */
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   
-  /* Alerta: Coluna 1, Linha 1 */
-  /* Sites: Coluna 2, Linha 1 */
-  
   /* Imagem RR: Coluna 1, Linha 2 */
   .rr-holder {
       grid-column: 1 / 2;
@@ -242,8 +239,9 @@
 <body>
 
   <div id="feedbackWidget">
-    <div id="feedbackBubble">Gostaria de receber um feedback sobre o RIC?</div>
-    <div id="feedbackIcon" onclick="document.getElementById('feedbackBubble').click();">
+    <div id="feedbackBubble" onclick="toggleFeedbackForm()">Gostaria de receber de você Um feedback sobre o RIC?</div>
+    
+    <div id="feedbackIcon" onclick="toggleFeedbackForm()">
       <img src="https://raw.githubusercontent.com/HD-TECH-hash/Ricai-crion-operacao/main/rr.png" alt="RIC AI">
     </div>
   </div>
@@ -446,9 +444,7 @@ const feedbackStatus = $('#feedbackStatus');
 const feedbackBusy = $('#feedbackBusy');
 
 // Alterna a visibilidade do formulário ao clicar na bolha ou no ícone
-$('#feedbackBubble').onclick = toggleFeedbackForm;
-$('#feedbackIcon').onclick = toggleFeedbackForm;
-
+// (O HTML está chamando esta função diretamente agora)
 function toggleFeedbackForm(){
     const isVisible = feedbackFormWrap.style.display === 'block';
     if (isVisible) {
@@ -478,6 +474,7 @@ async function doFeedback(){
   feedbackStatus.textContent='Enviando...';
 
   try{
+    // A chamada 'savefeedback' é a que envia o dado para a Google Sheet
     const r = await call('savefeedback',{mensagem: q});
 
     if(!r || r.ok===false){
