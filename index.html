@@ -177,22 +177,20 @@
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      gap: 10px;
+      gap: 5px; /* Reduz o gap entre o label e o ícone */
   }
 
-  #feedbackBubble {
-      background: #fff;
-      padding: 12px 18px;
-      border-radius: 20px 20px 4px 20px; /* Bolha com ponta inferior direita */
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      cursor: pointer;
-      font-weight: 600;
-      color: var(--ink);
-      white-space: nowrap;
-      transition: background 0.15s;
-  }
-  #feedbackBubble:hover {
-      background: #f1f5f9;
+  /* CORREÇÃO: Novo estilo para o label 'Feedback' */
+  #feedbackLabel {
+      background: var(--feedback); 
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer; /* Torna o label clicável */
   }
 
   #feedbackIcon {
@@ -210,7 +208,7 @@
       object-fit: cover;
   }
 
-  /* Janela pop-up minimalista (similar ao Post-it/Calc) */
+  /* Janela pop-up minimalista */
   #feedbackFormWrap {
     position: fixed;
     right: 20px;
@@ -239,7 +237,7 @@
 <body>
 
   <div id="feedbackWidget">
-    <div id="feedbackBubble" onclick="toggleFeedbackForm()">Gostaria de receber de você Um feedback sobre o RIC?</div>
+    <div id="feedbackLabel" onclick="toggleFeedbackForm()">Feedback</div>
     
     <div id="feedbackIcon" onclick="toggleFeedbackForm()">
       <img src="https://raw.githubusercontent.com/HD-TECH-hash/Ricai-crion-operacao/main/rr.png" alt="RIC AI">
@@ -247,9 +245,8 @@
   </div>
 
   <div id="feedbackFormWrap">
-    <div class="tag feedback-tag">Feedback</div>
     <h2>Sua opinião sobre o RIC</h2>
-    <textarea id="qFeedback" class="input" placeholder="Sua dica, sugestão ou opinião..."></textarea>
+    <textarea id="qFeedback" class="input" placeholder="Gostaria de receber de você Um feedback sobre o RIC?"></textarea>
     
     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
         <div id="feedbackStatus" class="hint" style="margin:0;">—</div>
@@ -436,15 +433,14 @@ $('#closeCalc').onclick = ()=>{ $('#calcWrap').style.display="none"; };
 
 
 /* ============================ */
-/* ======= FEEDBACK FLUTUANTE ======= */
+/* ======= FEEDBACK FLUTUANTE (Funcionalidade) ======= */
 /* ============================ */
 const feedbackFormWrap = $('#feedbackFormWrap');
 const qFeedback = $('#qFeedback');
 const feedbackStatus = $('#feedbackStatus');
 const feedbackBusy = $('#feedbackBusy');
 
-// Alterna a visibilidade do formulário ao clicar na bolha ou no ícone
-// (O HTML está chamando esta função diretamente agora)
+// Alterna a visibilidade do formulário
 function toggleFeedbackForm(){
     const isVisible = feedbackFormWrap.style.display === 'block';
     if (isVisible) {
@@ -465,7 +461,7 @@ $('#btnFeedback').addEventListener('click', doFeedback);
 async function doFeedback(){
   const q = (qFeedback.value||'').trim();
 
-  if(!q){
+  if(!q || q === qFeedback.placeholder){ /* Verifica se é só a marca d'água */
     feedbackStatus.textContent='Por favor, digite sua mensagem.';
     return;
   }
@@ -497,7 +493,7 @@ async function doFeedback(){
 
 
 /* ============================ */
-/* ======= ALERTA / SITES / CRION ======= */
+/* ======= ALERTA / SITES / CRION (Resto das funções) ======= */
 /* ============================ */
 $('#btnAlert').addEventListener('click', async ()=>{
   const msg=$('#alertMsg'), resp=$('#alertResp');
