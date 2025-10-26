@@ -309,7 +309,6 @@
 
 <script>
 /* ======= CONFIG ======= */
-/* APP_URL em uso: */
 const APP_URL = "https://script.google.com/macros/s/AKfycbzYHcP4jOPyTXuaWJiaLg1Gr5FP_G1mZNCwV33Se-PJ3wjFLjddwEN9fcRNJxBo2Df0ig/exec";
 
 /* ======= HELPERS ======= */
@@ -331,7 +330,7 @@ function call(endpoint, payload){
 }
 
 /* ============================ */
-/* ======= WIDGETS (POST-IT / CALC) FUNCTIONS ======= */
+/* ======= WIDGETS (POST-IT / CALC) FUNCTIONS (FIXED) ======= */
 /* ============================ */
 
 // Post-It
@@ -339,9 +338,18 @@ function toggleNoteWrap(explicitOpen){
     const noteWrap = $('#noteWrap');
     const noteArea = $('#noteArea');
     const isVisible = noteWrap.style.display === 'block';
-    if(explicitOpen && isVisible) { show(noteWrap, false); }
-    else { show(noteWrap, !isVisible); }
-    if(noteWrap.style.display === 'block') { noteArea.focus(); }
+
+    // Abertura: Se estiver fechado OU se for um toggle/abrir e a tela estiver escura, abre.
+    // Fechamento: Se for um fechamento explícito OU se for um toggle/abrir e a tela estiver aberta, fecha.
+    if(explicitOpen && isVisible) { 
+        show(noteWrap, false); 
+    } else { 
+        show(noteWrap, !isVisible); 
+    }
+    
+    if(noteWrap.style.display === 'block') { 
+        noteArea.focus(); 
+    }
 }
 function clearNote() {
     const noteArea = $('#noteArea');
@@ -352,9 +360,16 @@ function clearNote() {
 function toggleCalcWrap(explicitOpen){
     const calcWrap = $('#calcWrap');
     const isVisible = calcWrap.style.display === 'block';
-    if(explicitOpen && isVisible) { show(calcWrap, false); }
-    else { show(calcWrap, !isVisible); }
-    if(calcWrap.style.display === 'block') { refresh(); }
+    
+    if(explicitOpen && isVisible) { 
+        show(calcWrap, false); 
+    } else { 
+        show(calcWrap, !isVisible); 
+    }
+
+    if(calcWrap.style.display === 'block') { 
+        refresh(); // Atualiza a tela ao abrir
+    }
 }
 
 const calc = { buf:"0", op:null, mem:0, fresh:true };
@@ -373,25 +388,37 @@ function press(k){
     calc.buf=String(v); calc.op=null; calc.fresh=true; return refresh();
   }
 }
-// Adiciona listener para teclas da calculadora ao carregar a janela
+
+// --- CONFIGURAÇÃO DOS LISTENERS NO CARREGAMENTO ---
 window.onload = function() {
     const keys = $('#keys');
     const noteArea = $('#noteArea');
     
-    // Configura listeners do Post-it para persistir no local storage
+    // 1. Post-it Persistence
     if (noteArea) {
         noteArea.value = localStorage.getItem('ric_note') || "";
         noteArea.addEventListener('input', ()=> localStorage.setItem('ric_note', noteArea.value));
     }
 
-    // Configura listeners da Calculadora
+    // 2. Calculadora Key Presses
     if (keys) {
         keys.addEventListener('click', e => { 
             const k = e.target.dataset.k; 
             if(k) press(k); 
         });
     }
+    
+    // 3. Listeners para Enter (Melhoria de UX)
+    // Sites
+    const qSites = $('#qSites');
+    const btnSites = $('#btnSites');
+    if(qSites && btnSites) qSites.addEventListener('keydown', e=>{ if(e.key==='Enter') btnSites.click(); });
+    // CRION
+    const qCRION = $('#qCRION');
+    const btnCRION = $('#btnCRION');
+    if(qCRION && btnCRION) qCRION.addEventListener('keydown', e=>{ if(e.key==='Enter') btnCRION.click(); });
 };
+// ----------------------------------------------------
 
 
 /* ============================ */
@@ -420,7 +447,7 @@ async function doFeedback(){
       feedbackStatus.textContent='❌ Erro ao enviar: '+(r&&r.message?r.message:'');
     } else {
       feedbackStatus.textContent='✅ Feedback enviado com sucesso! Obrigado!';
-      qFeedback.value = ''; // Limpa o campo após o envio
+      qFeedback.value = ''; 
     }
   }catch(e){
     feedbackStatus.textContent='❌ Erro na comunicação: '+(e.message||e);
@@ -436,7 +463,9 @@ async function doFeedback(){
 async function doAlerts(){
   const msg=$('#alertMsg'), resp=$('#alertResp');
   const alertBusy = $('#alertBusy');
+  
   show(msg,false); show(resp,false); show(alertBusy,true);
+  
   try{
     const r = await call('getalert',{});
     if(!r || r.ok===false){ msg.textContent="Falha ao consultar."; show(msg,true); return; }
@@ -444,11 +473,13 @@ async function doAlerts(){
     msg.textContent = "🚨 " + String(r.mensagem||"—").toUpperCase(); show(msg,true);
     if(r.responsavel){ resp.textContent = String(r.responsavel||"").toLowerCase(); show(resp,true); }
   }catch(e){ msg.textContent="Erro: "+(e.message||e); show(msg,true);
-  }finally{ show(alertBusy,false); }
+  }finally{ 
+    show(alertBusy,false); 
+  }
 }
 
 /* ============================ */
-/* ======= SITES FUNCTIONS (Inclui PDF Search) ======= */
+/* ======= SITES FUNCTIONS ======= */
 /* ============================ */
 const AFFIX_CSV_URL = "data/affix/affix_pdfs_manifest.csv";
 let AFFIX_PDFS = [];
@@ -541,7 +572,6 @@ async function doSites(){
   }catch(e){ outSites.textContent='Erro: '+(e.message||e);
   }finally{ show(sitesBusy,false); }
 }
-
 
 /* ============================ */
 /* ======= CRION FUNCTIONS ======= */
