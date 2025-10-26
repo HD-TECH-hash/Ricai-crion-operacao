@@ -15,13 +15,13 @@
 
     --postit:#fddb56;
     --calc:#5fa5fa;
-    --feedback:#5fa5fa; /* Cor para o novo módulo de Feedback */
+    --feedback:#5fa5fa; 
 
     --ink:#0f172a;
     --muted:#64748b;
     --line:#e7eef7;
 
-    /* Fundo ÚNICO SOLIDO */
+    /* Fundo ÚNICO SOLIDO (Cor: --bg1) */
     --bg1:#4889c5;
     --bg2:#4889c5; 
     --bg-header: rgba(72, 137, 197, 0.95);
@@ -45,6 +45,7 @@
     width:100%;
     padding:14px 0;
     
+    /* Usando cor sólida de fundo */
     background:var(--bg-header); 
     backdrop-filter: blur(8px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -335,21 +336,18 @@ function call(endpoint, payload){
 // Post-It
 function toggleNoteWrap(explicitOpen){
     const noteWrap = $('#noteWrap');
-    const noteArea = $('#noteArea');
     const isVisible = noteWrap.style.display === 'block';
 
-    // Se a intenção é abrir, ou se é um toggle e está fechado, abre.
-    // Se a intenção é fechar (ou fechar pelo toggle), fecha.
     if (explicitOpen && isVisible) { 
         show(noteWrap, false); 
-    } else if (explicitOpen || !isVisible) {
-        show(noteWrap, true);
+    } else if (explicitOpen || !isVisible) { 
+        show(noteWrap, true); 
     } else {
         show(noteWrap, false);
     }
     
     if(noteWrap.style.display === 'block') { 
-        noteArea.focus(); 
+        $('#noteArea').focus(); 
     }
 }
 function clearNote() {
@@ -371,7 +369,7 @@ function toggleCalcWrap(explicitOpen){
     }
 
     if(calcWrap.style.display === 'block') { 
-        refresh(); // Atualiza a tela ao abrir
+        refresh(); 
     }
 }
 
@@ -451,7 +449,7 @@ async function doAlerts(){
 }
 
 /* ============================ */
-/* ======= SITES FUNCTIONS (Inclui PDF Search) ======= */
+/* ======= SITES FUNCTIONS ======= */
 /* ============================ */
 const AFFIX_CSV_URL = "data/affix/affix_pdfs_manifest.csv";
 let AFFIX_PDFS = [];
@@ -584,6 +582,42 @@ async function doCRION(){
   }catch(e){ crionStatus.textContent='Erro: '+(e.message||e);
   }finally{ show(crionBusy,false); }
 }
+
+// ----------------------------------------------------
+// ANEXAÇÃO FINAL DE LISTENERS NO CARREGAMENTO DA PÁGINA
+// ----------------------------------------------------
+window.onload = function() {
+    // 1. Botões do Topo
+    document.getElementById('toggleNote').addEventListener('click', function() { toggleNoteWrap(true); });
+    document.getElementById('toggleCalc').addEventListener('click', function() { toggleCalcWrap(true); });
+
+    // 2. Botões de Ação Principal (Pesquisar/Enviar)
+    document.getElementById('btnAlert').addEventListener('click', doAlerts);
+    document.getElementById('btnSites').addEventListener('click', doSites);
+    document.getElementById('btnCRION').addEventListener('click', doCRION);
+    document.getElementById('btnFeedback').addEventListener('click', doFeedback);
+
+    // 3. Botões Internos dos Widgets (Limpar/Fechar)
+    document.getElementById('clearNote').addEventListener('click', clearNote);
+    document.getElementById('closeNote').addEventListener('click', function() { toggleNoteWrap(false); });
+    document.getElementById('closeCalc').addEventListener('click', function() { toggleCalcWrap(false); });
+
+    // 4. Calculadora Key Presses
+    const keys = document.getElementById('keys');
+    if (keys) {
+        keys.addEventListener('click', e => { 
+            const k = e.target.dataset.k; 
+            if(k) press(k); 
+        });
+    }
+
+    // 5. Post-it Persistence
+    const noteArea = document.getElementById('noteArea');
+    if (noteArea) {
+        noteArea.value = localStorage.getItem('ric_note') || "";
+        noteArea.addEventListener('input', ()=> localStorage.setItem('ric_note', noteArea.value));
+    }
+};
 </script>
 </body>
 </html>
