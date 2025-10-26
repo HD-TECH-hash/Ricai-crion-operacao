@@ -25,6 +25,10 @@
     --bg1:#4889c5;
     --bg2:#4889c5; 
     --bg-header: rgba(72, 137, 197, 0.95);
+
+    /* CORREÇÃO: PDFs – amarelo claro */
+    --pdf-bg:#FFFFE0;  /* Amarelo claro (Light Yellow) */
+    --pdf-bd:#FAFAD2;  /* Borda amarelada clara */
   }
 
   *{box-sizing:border-box}
@@ -143,7 +147,7 @@
   .hint{font-size:12px;color:var(--muted);margin-top:6px}
   .out{white-space:pre-wrap;min-height:120px;border:1px dashed var(--line);border-radius:12px;padding:10px;margin-top:10px;background:#fbfbff}
 
-  /* Lista/Prévia de PDFs */
+  /* Lista/Prévia de PDFs - Usa as novas cores amarelas */
   #affixList .affix-row{padding:8px 10px;border:1px solid var(--pdf-bd);background:var(--pdf-bg);border-radius:12px;margin:10px 0}
   #affixList .affix-actions{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
   #affixList .affix-prev{display:none;margin-top:8px;border-radius:10px;overflow:hidden;border:1px solid var(--pdf-bd);background:#fff}
@@ -587,22 +591,23 @@ async function doCRION(){
 // ANEXAÇÃO FINAL DE LISTENERS NO CARREGAMENTO DA PÁGINA
 // ----------------------------------------------------
 window.onload = function() {
-    // 1. Botões do Topo
+    
+    // Anexação dos botões de Toggle
     document.getElementById('toggleNote').addEventListener('click', function() { toggleNoteWrap(true); });
     document.getElementById('toggleCalc').addEventListener('click', function() { toggleCalcWrap(true); });
+    
+    // Anexação dos botões de Fechar/Limpar (Widgets Internos)
+    document.getElementById('closeNote').addEventListener('click', function() { toggleNoteWrap(false); });
+    document.getElementById('clearNote').addEventListener('click', clearNote);
+    document.getElementById('closeCalc').addEventListener('click', function() { toggleCalcWrap(false); });
 
-    // 2. Botões de Ação Principal (Pesquisar/Enviar)
+    // Anexação dos botões principais da grade
     document.getElementById('btnAlert').addEventListener('click', doAlerts);
     document.getElementById('btnSites').addEventListener('click', doSites);
     document.getElementById('btnCRION').addEventListener('click', doCRION);
     document.getElementById('btnFeedback').addEventListener('click', doFeedback);
 
-    // 3. Botões Internos dos Widgets (Limpar/Fechar)
-    document.getElementById('clearNote').addEventListener('click', clearNote);
-    document.getElementById('closeNote').addEventListener('click', function() { toggleNoteWrap(false); });
-    document.getElementById('closeCalc').addEventListener('click', function() { toggleCalcWrap(false); });
-
-    // 4. Calculadora Key Presses
+    // Calculadora Key Presses
     const keys = document.getElementById('keys');
     if (keys) {
         keys.addEventListener('click', e => { 
@@ -610,13 +615,22 @@ window.onload = function() {
             if(k) press(k); 
         });
     }
-
-    // 5. Post-it Persistence
+    
+    // Post-it Persistence and initial load
     const noteArea = document.getElementById('noteArea');
     if (noteArea) {
         noteArea.value = localStorage.getItem('ric_note') || "";
         noteArea.addEventListener('input', ()=> localStorage.setItem('ric_note', noteArea.value));
     }
+    
+    // Melhorias de UX (Enter)
+    const qSites = document.getElementById('qSites');
+    const btnSites = document.getElementById('btnSites');
+    if(qSites && btnSites) qSites.addEventListener('keydown', e=>{ if(e.key==='Enter') btnSites.click(); });
+    
+    const qCRION = document.getElementById('qCRION');
+    const btnCRION = document.getElementById('btnCRION');
+    if(qCRION && btnCRION) qCRION.addEventListener('keydown', e=>{ if(e.key==='Enter') btnCRION.click(); });
 };
 </script>
 </body>
