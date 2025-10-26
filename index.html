@@ -15,19 +15,16 @@
 
     --postit:#fddb56;
     --calc:#5fa5fa;
-    --feedback:#38bdf8; /* Cor azul claro para o Feedback (novo) */
+    --feedback:#38bdf8; 
 
     --ink:#0f172a;
     --muted:#64748b;
     --line:#e7eef7;
 
-    /* Fundo ÚNICO SOLIDO (Cor: --bg1) */
+    /* Fundo ÚNICO SOLIDO */
     --bg1:#4889c5;
-    --bg2:#4889c5; /* Corrigido para ser igual ao bg1 */
-
-    /* PDFs – laranja bem clarinho */
-    --pdf-bg:#fff7ed;   /* orange-50 */
-    --pdf-bd:#ffedd5;   /* orange-100 */
+    --bg2:#4889c5; 
+    --bg-header: rgba(72, 137, 197, 0.95); /* Fundo semi-transparente para o cabeçalho fixo */
   }
 
   *{box-sizing:border-box}
@@ -35,7 +32,7 @@
   body{
     margin:0;color:var(--ink);
     font:14px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial;
-    /* CORREÇÃO: Fundo com cor sólida, removendo o degradê e a vinheta */
+    /* Fundo com cor sólida */
     background: var(--bg1);
   }
 
@@ -48,8 +45,8 @@
     width:100%;
     padding:14px 0;
     
-    /* CORREÇÃO: Usando cor sólida de fundo */
-    background:var(--bg1); 
+    /* Usando cor sólida de fundo no topo fixo */
+    background:var(--bg-header); 
     backdrop-filter: blur(8px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     
@@ -70,7 +67,8 @@
   .floatbar-inner > *{ pointer-events:auto; }
 
   .logo-left{height:44px; object-fit:contain; filter:drop-shadow(0 4px 10px #0002)}
-  .logo-right{height:46px; justify-self:end; object-fit:contain; filter:drop-shadow(0 4px 10px #0002)}
+  /* CORREÇÃO: Altura reduzida para evitar truncamento */
+  .logo-right{height:40px; justify-self:end; object-fit:contain; filter:drop-shadow(0 4px 10px #0002)}
 
   .tools{display:flex; gap:10px; justify-self:end}
   .tool{
@@ -129,7 +127,7 @@
   .tag.sites{background:var(--sites)}
   .tag.procs{background:var(--procs)}
   .tag.pdfs{background:#0ea5e9}
-  .tag.feedback-tag{background:var(--feedback)} /* Tag dentro do formulário */
+  .tag.feedback-tag{background:var(--feedback)} 
 
   .row{display:flex;gap:10px;align-items:center}
   .input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fbfcff}
@@ -167,7 +165,7 @@
   .copyright{font-size:12px;color:#e2e8f0}
   
   /* ======================================= */
-  /* ===== NOVO WIDGET DE FEEDBACK FLUTUANTE ===== */
+  /* ===== WIDGET DE FEEDBACK FLUTUANTE ===== */
   /* ======================================= */
   #feedbackWidget {
       position: fixed;
@@ -177,10 +175,10 @@
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      gap: 5px; /* Reduz o gap entre o label e o ícone */
+      gap: 5px; 
   }
 
-  /* CORREÇÃO: Novo estilo para o label 'Feedback' */
+  /* Label 'Feedback' acima do ícone */
   #feedbackLabel {
       background: var(--feedback); 
       color: #fff;
@@ -190,7 +188,7 @@
       font-size: 13px;
       font-weight: 700;
       text-align: center;
-      cursor: pointer; /* Torna o label clicável */
+      cursor: pointer; 
   }
 
   #feedbackIcon {
@@ -461,7 +459,7 @@ $('#btnFeedback').addEventListener('click', doFeedback);
 async function doFeedback(){
   const q = (qFeedback.value||'').trim();
 
-  if(!q || q === qFeedback.placeholder){ /* Verifica se é só a marca d'água */
+  if(!q || q === qFeedback.placeholder){ 
     feedbackStatus.textContent='Por favor, digite sua mensagem.';
     return;
   }
@@ -470,7 +468,6 @@ async function doFeedback(){
   feedbackStatus.textContent='Enviando...';
 
   try{
-    // A chamada 'savefeedback' é a que envia o dado para a Google Sheet
     const r = await call('savefeedback',{mensagem: q});
 
     if(!r || r.ok===false){
