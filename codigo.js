@@ -61,647 +61,536 @@ const CITY_ALIASES = {
 /* ========= Token especial que “força” UF/cidade ========= */
 const SPECIAL_CITY_TOKENS = {
   // “samp” no nome/consulta indica linha São Bernardo no ES
-  "samp": { city:"sao bernardo", uf:"es" } // [cite: 603]
+  "samp": { city:"sao bernardo", uf:"es" }
 };
 /* ========= Normalização (remove acento, til, cedilha etc.) ========= */
-const STOP = new Set(["de","da","do","das","dos","e","a","o","as","os","the"]); // [cite: 604]
+const STOP = new Set(["de","da","do","das","dos","e","a","o","as","os","the"]);
 const norm = s => String(s||"")
-  .toLowerCase() // [cite: 605]
-  .normalize("NFD")                 // separa acentos [cite: 605]
-  .replace(/\p{Diacritic}/gu,"")    // remove acentos (ã→a, ç→c) [cite: 605]
-  .replace(/[._]/g," ") // [cite: 605]
-  .replace(/\s+/g," ") // [cite: 605]
-  .trim(); // [cite: 605]
+  .toLowerCase()
+  .normalize("NFD")                 // separa acentos
+  .replace(/\p{Diacritic}/gu,"")    // remove acentos (ã→a, ç→c)
+  .replace(/[._]/g," ")
+  .replace(/\s+/g," ")
+  .trim();
+
 const tokenize = s => norm(s)
-  .replace(/[-/]/g," ")             // hífen/barra viram espaço [cite: 606]
-  .replace(/[^\p{Letter}\p{Number}\s]/gu," ") // [cite: 606]
-  .split(/\s+/) // [cite: 606]
-  .filter(t=>t && !STOP.has(t)); // [cite: 606]
+  .replace(/[-/]/g," ")             // hífen/barra viram espaço
+  .replace(/[^\p{Letter}\p{Number}\s]/gu," ")
+  .split(/\s+/)
+  .filter(t=>t && !STOP.has(t));
 /* ========= Marcas/domínios ========= */
-const BRAND_DOMAINS = { affix:"affix.com.br", alter:"alter.com.br" }; // [cite: 607]
-const detectBrands = qn => ({ hasAffix:/\baffix\b/i.test(qn), hasAlter:/\balter\b/i.test(qn) }); // [cite: 607]
+const BRAND_DOMAINS = { affix:"affix.com.br", alter:"alter.com.br" };
+const detectBrands = qn => ({ hasAffix:/\baffix\b/i.test(qn), hasAlter:/\balter\b/i.test(qn) });
 /* ========= Data no nome → boost ========= */
 function extractMY(nameN){
-  const m = nameN.match(/[-_](0[1-9]|1[0-2])[-_](\d{2})(?=($|[^0-9]))/); // [cite: 608]
-  return m ? {year:2000+ +m[2], month:+m[1]} : null; // [cite: 609]
+  const m = nameN.match(/[-_](0[1-9]|1[0-2])[-_](\d{2})(?=($|[^0-9]))/);
+  return m ? {year:2000+ +m[2], month:+m[1]} : null;
 }
-const dateScore = item => { const my=extractMY(item.nameN); return my? my.year*12+my.month : 0; }; // [cite: 609]
+const dateScore = item => { const my=extractMY(item.nameN); return my? my.year*12+my.month : 0; };
 /* ========= Helpers de match ========= */
-const wordsSlug   = s => ` ${tokenize(s).join(" ")} `; // [cite: 610]
-const containsWord   = (slug,t)=> slug.includes(` ${t} `); // [cite: 611]
+const wordsSlug   = s => ` ${tokenize(s).join(" ")} `;
+const containsWord   = (slug,t)=> slug.includes(` ${t} `);
 const containsPhrase = (slug,phrase)=>{
-  const p = tokenize(phrase).join(" "); // [cite: 611]
-  return p && slug.includes(` ${p} `); // [cite: 612]
+  const p = tokenize(phrase).join(" ");
+  return p && slug.includes(` ${p} `);
 };
 
 /* UF forte: sigla isolada por não-letras (ex.: “-ES-”, “(ES)”) */
 function hasUFStrong(raw, uf){
-  const sig = uf.toUpperCase(); // [cite: 612]
-  const re = new RegExp(`(^|[^A-Za-z])${sig}([^A-Za-z]|$)`); // [cite: 613]
-  return re.test(raw); // [cite: 613]
+  const sig = uf.toUpperCase();
+  const re = new RegExp(`(^|[^A-Za-z])${sig}([^A-Za-z]|$)`);
+  return re.test(raw);
 }
 /* Regra extra: “ES-Manual” ou “Manual-ES” força ES */
 function hasESManual(raw){
-  return /(^|[^A-Za-z])ES([^A-Za-z].*manual|$)|manual[^A-Za-z].*ES([^A-Za-z]|$)/i.test(raw); // [cite: 613]
+  return /(^|[^A-Za-z])ES([^A-Za-z].*manual|$)|manual[^A-Za-z].*ES([^A-Za-z]|$)/i.test(raw);
 }
 function passUFStrict(it, uf){
-  if(!uf) return true; // [cite: 614]
-  if(it.ufs.has(uf)) return true; // [cite: 614]
-  if(uf==="es" && (hasESManual(it.nameRaw)||hasESManual(it.urlRaw))) return true; // [cite: 614]
-  return hasUFStrong(it.nameRaw, uf) || hasUFStrong(it.urlRaw, uf); // [cite: 614-615]
+  if(!uf) return true;
+  if(it.ufs.has(uf)) return true;
+  if(uf==="es" && (hasESManual(it.nameRaw)||hasESManual(it.urlRaw))) return true;
+  return hasUFStrong(it.nameRaw, uf) || hasUFStrong(it.urlRaw, uf);
 }
 
-/* ========= Indexação com Keywords do CSV (ATUALIZADO) ========= */
+/* ========= Indexação (Versão Original - 2 colunas) ========= */
 function buildIndex(rows){
-  const seen=new Set(), out=[]; // [cite: 615]
+  const seen=new Set(), out=[];
   for(const r of rows){
-    // Verifica se a linha tem as 3 colunas esperadas (name, url, keywords)
-    if(!r || !r.name || !r.url || typeof r.keywords === 'undefined') continue; // Pula linha mal formatada
+    // Espera apenas name e url
+    if(!r || !r.name || !r.url) continue;
 
-    let url=String(r.url).trim(); // [cite: 616]
-    if(/^http:\/\//i.test(url)) url=url.replace(/^http:\/\//i,"https://"); // força https [cite: 616]
-    if(!/^https?:\/\/[^\s]+$/i.test(url)) continue; // Valida URL [cite: 617]
-    if(seen.has(url)) continue; seen.add(url); // Evita duplicatas pela URL [cite: 617]
+    let url=String(r.url).trim();
+    if(/^http:\/\//i.test(url)) url=url.replace(/^http:\/\//i,"https://"); // força https
+    if(!/^https?:\/\/[^\s]+$/i.test(url)) continue;
+    if(seen.has(url)) continue; seen.add(url);
 
-    const nameRaw = String(r.name); // [cite: 617]
-    const urlRaw  = url; // [cite: 617]
-    const keywordsRaw = String(r.keywords || ''); // Pega a string de keywords
+    const nameRaw = String(r.name);
+    const urlRaw  = url;
 
-    const nameN = norm(nameRaw); // [cite: 618]
-    const urlN  = norm(urlRaw); // [cite: 618]
-    const keywordsN = norm(keywordsRaw); // Normaliza as keywords também
+    const nameN = norm(nameRaw);
+    const urlN  = norm(urlRaw);
+    // Slug e Kws baseados apenas em name e url
+    const slug  = wordsSlug(nameRaw+" "+urlRaw);
+    const kws   = new Set(tokenize(nameRaw).concat(tokenize(urlRaw)));
 
-    // O slug agora inclui palavras do nome, URL e keywords
-    const slug  = wordsSlug(nameRaw + " " + urlRaw + " " + keywordsRaw); // Adiciona keywords ao slug [cite: 618]
-
-    // O conjunto kws agora inclui tokens do nome, URL e keywords
-    const kws   = new Set([
-      ...tokenize(nameRaw), // [cite: 619]
-      ...tokenize(urlRaw), // [cite: 619]
-      ...tokenize(keywordsRaw) // Adiciona tokens das keywords
-    ]);
-
-    // --- O restante da lógica de detecção de UFs e Cidades permanece igual ---
-    const ufs=new Set(); // [cite: 619]
-    for(const [uf,alts] of Object.entries(UF_MAP)){ // [cite: 620]
-      const altsN=[uf, ...alts.map(norm)]; // [cite: 620]
-      // Verifica se algum alias da UF está no slug (que agora inclui keywords)
-      if(altsN.some(a=>containsWord(slug,a))) ufs.add(uf); // [cite: 620]
-      // Mantém a verificação forte na URL e Nome originais
-      else if(hasUFStrong(nameRaw,uf) || hasUFStrong(urlRaw,uf)) ufs.add(uf); // [cite: 620]
+    // --- Lógica de UFs e Cidades ---
+    const ufs=new Set();
+    for(const [uf,alts] of Object.entries(UF_MAP)){
+      const altsN=[uf, ...alts.map(norm)];
+      if(altsN.some(a=>containsWord(slug,a))) ufs.add(uf);
+      else if(hasUFStrong(nameRaw,uf) || hasUFStrong(urlRaw,uf)) ufs.add(uf);
     }
-    if(hasESManual(nameRaw) || hasESManual(urlRaw)) ufs.add("es"); // Reforço ES-Manual [cite: 621]
+    if(hasESManual(nameRaw) || hasESManual(urlRaw)) ufs.add("es"); // reforço ES-Manual
 
-    const cities=new Set(); // [cite: 621]
-    for(const [base,alts] of Object.entries(CITY_ALIASES)){ // [cite: 622]
-      const all=[base, ...alts.map(norm)]; // [cite: 622]
-      // Verifica se algum alias da cidade está no slug (que agora inclui keywords)
-      if(all.some(a=>containsPhrase(slug,a))) cities.add(base); // [cite: 622]
+    const cities=new Set();
+    for(const [base,alts] of Object.entries(CITY_ALIASES)){
+      const all=[base, ...alts.map(norm)];
+      if(all.some(a=>containsPhrase(slug,a))) cities.add(base);
     }
-    // --------------------------------------------------------------------
+    // -----------------------------
 
-    // Adiciona o campo 'tags' (versão normalizada das keywords) ao objeto do índice
-    out.push({
-      name:r.name, // [cite: 623]
-      url:urlRaw, // [cite: 623]
-      nameN, // [cite: 623]
-      urlN, // [cite: 623]
-      slug, // [cite: 623]
-      kws, // [cite: 623]
-      ufs, // [cite: 623]
-      cities, // [cite: 623]
-      tags: new Set(tokenize(keywordsRaw)), // Guarda os tokens das keywords separadamente
-      dscore:dateScore({nameN}), // [cite: 623]
-      nameRaw, // [cite: 624]
-      urlRaw // [cite: 624]
-    });
+    out.push({ name:r.name, url:urlRaw, nameN, urlN, slug, kws, ufs, cities, dscore:dateScore({nameN}), nameRaw, urlRaw });
   }
-  return out; // [cite: 624]
+  return out;
 }
 
 
 /* ========= Expansão de consulta (UF/cidade/aliases/tokens) ========= */
 function expandQuery(q){
-  const qn    = norm(q); // [cite: 624]
-  const parts = tokenize(qn); // [cite: 625]
+  const qn    = norm(q);
+  const parts = tokenize(qn);
 
   // Detecta UF e considera “apenas UF” se todos tokens são aliases dessa UF
-  let uf=null; // [cite: 625]
-  for(const [k,alts] of Object.entries(UF_MAP)){ // [cite: 626]
-    const aliasTokens = new Set([k, ...alts.flatMap(a=>tokenize(a))]); // [cite: 626]
-    const allFromUF   = parts.length>0 && parts.every(t=>aliasTokens.has(t)); // [cite: 627]
-    if(allFromUF || alts.some(a=>qn.includes(norm(a)))){ uf=k; break; } // [cite: 627]
+  let uf=null;
+  for(const [k,alts] of Object.entries(UF_MAP)){
+    const aliasTokens = new Set([k, ...alts.flatMap(a=>tokenize(a))]);
+    const allFromUF   = parts.length>0 && parts.every(t=>aliasTokens.has(t));
+    if(allFromUF || alts.some(a=>qn.includes(norm(a)))){ uf=k; break; }
   }
   if(uf){
-    const aliasTokens = new Set([uf, ...UF_MAP[uf].flatMap(a=>tokenize(a))]); // [cite: 628]
-    if(parts.every(t=>aliasTokens.has(t))) return {terms:new Set([uf]), uf}; // ex.: “espirito santo” [cite: 628]
+    const aliasTokens = new Set([uf, ...UF_MAP[uf].flatMap(a=>tokenize(a))]);
+    if(parts.every(t=>aliasTokens.has(t))) return {terms:new Set([uf]), uf}; // ex.: “espirito santo”
   }
 
   // Lock por cidade se a frase aparece
-  for(const [base,alts] of Object.entries(CITY_ALIASES)){ // [cite: 629]
-    const all=[base,...alts.map(norm)]; // [cite: 629]
-    if(all.some(a=>qn.includes(a))){ // [cite: 630]
-      const tset = new Set([...tokenize(base), ...(uf?[uf]:[])]); // [cite: 630]
-      return {terms:tset, uf, cityLock:base}; // [cite: 630]
+  for(const [base,alts] of Object.entries(CITY_ALIASES)){
+    const all=[base,...alts.map(norm)];
+    if(all.some(a=>qn.includes(a))){
+      const tset = new Set([...tokenize(base), ...(uf?[uf]:[])]);
+      return {terms:tset, uf, cityLock:base};
     }
   }
 
   // Tokens especiais
-  for(const [tok,rule] of Object.entries(SPECIAL_CITY_TOKENS)){ // [cite: 631]
-    if(parts.includes(tok)){ // [cite: 631]
-      const lockUF = uf || rule.uf; // [cite: 631]
-      return {terms:new Set([tok, ...tokenize(rule.city), lockUF]), uf:lockUF, cityLock:rule.city}; // [cite: 632]
+  for(const [tok,rule] of Object.entries(SPECIAL_CITY_TOKENS)){
+    if(parts.includes(tok)){
+      const lockUF = uf || rule.uf;
+      return {terms:new Set([tok, ...tokenize(rule.city), lockUF]), uf:lockUF, cityLock:rule.city};
     }
   }
 
   // Expansão leve: se algum token for alias de cidade, adiciona base
-  const extra=[]; // [cite: 632]
-  for(const [base,alts] of Object.entries(CITY_ALIASES)){ // [cite: 633]
-    const all = new Set([base,...alts.map(norm)]); // [cite: 633]
-    for(const t of parts){ if(all.has(t)){ extra.push(base); break; } } // [cite: 633]
+  const extra=[];
+  for(const [base,alts] of Object.entries(CITY_ALIASES)){
+    const all = new Set([base,...alts.map(norm)]);
+    for(const t of parts){ if(all.has(t)){ extra.push(base); break; } }
   }
 
-  return {terms:new Set([...parts, ...extra, ...(uf?[uf]:[])]), uf}; // [cite: 634]
+  return {terms:new Set([...parts, ...extra, ...(uf?[uf]:[])]), uf};
 }
 
-/* ========= Busca Refinada com Scoring (ATUALIZADO) ========= */
-function search(index, q) {
-  if (!index?.length) return []; // [cite: 635]
-  const qn = norm(q || ""); if (!qn) return []; // [cite: 635]
-  const { hasAffix, hasAlter } = detectBrands(qn); // [cite: 636]
-  const { terms, uf, cityLock } = expandQuery(q); // Obtém termos normalizados, UF e cidade (se houver) [cite: 636]
+/* ========= Busca (Versão Original - AND Estrito) ========= */
+function search(index,q){
+  if(!index?.length) return [];
+  const qn = norm(q||""); if(!qn) return [];
 
-  // Filtros básicos (marca, UF estrita, cidade específica)
-  const brandFilter = hasAffix || hasAlter; // [cite: 636]
+  const {hasAffix,hasAlter} = detectBrands(qn);
+  const {terms, uf, cityLock} = expandQuery(q);
+
+  const brandFilter = hasAffix || hasAlter;
   const passBrand = it =>
-    !brandFilter || // [cite: 637]
-    (hasAffix && it.url.includes(BRAND_DOMAINS.affix)) || // Verifica se URL contém o domínio da marca [cite: 637]
-    (hasAlter && it.url.includes(BRAND_DOMAINS.alter)); // Verifica se URL contém o domínio da marca [cite: 637]
-  const passCity = it => !cityLock || containsPhrase(it.slug, cityLock); // Verifica se slug contém a frase da cidade [cite: 638]
+    !brandFilter ||
+    (hasAffix && it.url.includes(BRAND_DOMAINS.affix)) ||
+    (hasAlter && it.url.includes(BRAND_DOMAINS.alter));
+  const passCity = it => !cityLock || containsPhrase(it.slug, cityLock);
 
-  const results = [];
-  for (const it of index) {
-    // Aplica filtros iniciais
-    if (!passBrand(it) || !passUFStrict(it, uf) || !passCity(it)) continue; // Pula se não passar nos filtros de marca, UF estrita ou cidade
-
-    let score = 0;
-    let matchedTermsCount = 0;
-    const matchedInName = new Set();
-    const matchedInUrl = new Set();
-    // const matchedInTags = new Set(); // Descomentar se adicionar tags ao índice
-
-    // 1. Match exato da frase (pontuação máxima)
-    const exactMatch = it.nameN.includes(qn) || it.urlN.includes(qn); // Verifica se nome ou URL normalizado contém a query exata
-    if (exactMatch) {
-      score = 10000; // Pontuação muito alta para match exato
-      matchedTermsCount = terms.size; //
-    } else {
-      // 2. Pontuação baseada nos termos individuais
-      terms.forEach(term => {
-        let termFound = false;
-        const termPattern = ` ${term} `; // Procura palavra inteira (com espaços)
-        const termStartPattern = `${term} `;
-        const termEndPattern = ` ${term}`;
-
-        // Prioridade 1: Termo no nome ou URL (usando slug para verificar) ou KWS
-        // Verifica se o termo está no slug (que inclui palavras do nome, URL e keywords)
-        if (containsWord(it.slug, term)) { // Usa containsWord para verificar slug
-           // Verifica especificamente no nome para dar mais peso
-           if (it.nameN.includes(termPattern) || it.nameN.startsWith(termStartPattern) || it.nameN.endsWith(termEndPattern) || it.nameN === term) {
-              score += 100; // Peso maior para match no nome
-              matchedInName.add(term);
-              termFound = true;
-           }
-           // Verifica na URL se não achou no nome (peso médio)
-           else if (it.urlN.includes(termPattern) || it.urlN.includes(`/${term}/`) || it.urlN.endsWith(`/${term}`) || it.urlN.endsWith(`-${term}.pdf`)) { // Adiciona verificações na URL
-              score += 50; // Peso menor para match na URL
-              matchedInUrl.add(term);
-              termFound = true;
-           }
-           // Adicionar lógica para tags aqui, se implementado
-           // else if (it.tags && it.tags.has(term)) { score += 20; matchedInTags.add(term); termFound = true; }
-        }
-
-         // Mesmo se não for palavra inteira, verifica se o token está contido (peso baixo) - para siglas grudadas etc.
-         if (!termFound && (it.kws.has(term))) { // Verifica se o token existe no conjunto de keywords
-            score += 10; // Peso baixo para match parcial ou em kws
-             // Tenta atribuir a nome ou url para desempate
-             if (it.nameN.includes(term)) matchedInName.add(term);
-             else if (it.urlN.includes(term)) matchedInUrl.add(term);
-            termFound = true;
-         }
-
-
-        if (termFound) {
-          matchedTermsCount++;
-        }
-      });
-
-      // Boost se todos os termos foram encontrados
-      if (matchedTermsCount === terms.size && terms.size > 0) {
-        score += 500; // Bônus significativo por encontrar todos os termos
-      }
-
-       // Boost adicional se a UF específica foi encontrada E estava na query
-      if (uf && it.ufs.has(uf)) { // Verifica se a UF do item bate com a UF da query
-         score += 150;
-      }
-      // Boost adicional se a cidade específica foi encontrada E estava na query
-       if (cityLock && it.cities.has(cityLock)) { // Verifica se a cidade do item bate com a cidade travada da query
-          score += 200; // Boost maior para cidade
-       }
-
-      // Adiciona o score de data (boost leve para arquivos mais recentes)
-      score += it.dscore / 50; // Ajuste o divisor para controlar o peso da data [cite: 609-610]
-    }
-
-    // Adiciona aos resultados apenas se tiver pontuação
-    if (score > 0) {
-      results.push({
-        it,
-        score,
-        matchedTermsCount,
-        // debug: { nameM: [...matchedInName], urlM: [...matchedInUrl] } // Para depuração
-      });
+  // 1) frase exata no name/url
+  const exact=[];
+  for(const it of index){
+    if(!passBrand(it) || !passUFStrict(it,uf) || !passCity(it)) continue;
+    if(it.nameN.includes(qn) || it.urlN.includes(qn)){
+      exact.push({it, score:1000 + it.dscore});
     }
   }
+  if(exact.length){
+    return exact
+      .sort((a,b)=> b.score-a.score || a.it.name.localeCompare(b.it.name))
+      .map(x=>({name:x.it.name, url:x.it.url}));
+  }
 
-  // Ordena os resultados:
-  // 1. Maior Score
-  // 2. Maior número de termos encontrados
-  // 3. Ordem alfabética do nome (desempate)
-  return results
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      if (b.matchedTermsCount !== a.matchedTermsCount) return b.matchedTermsCount - a.matchedTermsCount;
-      return a.it.name.localeCompare(b.it.name);
-    })
-    .map(x => ({ name: x.it.name, url: x.it.url /*, score: x.score */ })); // Retorna apenas nome e URL
+  // 2) AND estrito de palavras inteiras
+  const strict=[];
+  for(const it of index){
+    if(!passBrand(it) || !passUFStrict(it,uf) || !passCity(it)) continue;
+    // Verifica se TODOS os termos estão no slug ou kws
+    const ok = [...terms].every(t => containsWord(it.slug,t) || it.kws.has(t));
+    if(!ok) continue;
+    strict.push({it, score:500 + terms.size*10 + it.dscore/100});
+  }
+  if(strict.length){
+    return strict
+      .sort((a,b)=> b.score-a.score || a.it.name.localeCompare(b.it.name))
+      .map(x=>({name:x.it.name, url:x.it.url}));
+  }
+
+  // 3) sem resultados → nada (evita ruído)
+  return [];
 }
 
-/* ========= Carregamento CSV e Busca (Interface) ========= */
-const AFFIX_CSV_URL = "data/affix/affix_pdfs_manifest.csv"; // [cite: 561]
-let AFFIX_PDFS = []; // [cite: 561]
-let AFFIX_INDEX = []; // Guarda o índice construído
+
+/* ========= Carregamento CSV e Busca (Interface - Versão Original) ========= */
+const AFFIX_CSV_URL = "data/affix/affix_pdfs_manifest.csv";
+let AFFIX_PDFS = []; // Guarda os dados brutos
+let AFFIX_INDEX = []; // Guarda o índice construído (não usado diretamente nesta versão)
 
 async function loadAffixCSV(){
-  if (AFFIX_INDEX.length) return; // Só carrega uma vez
-  const badge = $('#affixCount'); //
-  badge.textContent = 'Carregando lista de PDFs...'; //
-  const res = await fetch(AFFIX_CSV_URL); // [cite: 562]
-  if (!res.ok) {
-      badge.textContent = `Erro ${res.status} ao carregar CSV`; //
-      throw new Error(`HTTP error ${res.status}`); //
+  if (AFFIX_PDFS.length) return; // Só carrega uma vez
+  const badge = $('#affixCount');
+  badge.textContent = 'Carregando lista de PDFs...';
+  try {
+    const res = await fetch(AFFIX_CSV_URL);
+    if (!res.ok) {
+        badge.textContent = `Erro ${res.status} ao carregar CSV`;
+        throw new Error(`HTTP error ${res.status}`);
+    }
+    const text = await res.text();
+    AFFIX_PDFS = parseAffixCSV(text); // Guarda os dados brutos
+    // Build index could be called here if needed by original search logic, but seems it wasn't
+    // AFFIX_INDEX = buildIndex(AFFIX_PDFS);
+    badge.textContent = `${AFFIX_PDFS.length} PDFs carregados.`; // Avisa que carregou
+  } catch (e) {
+      badge.textContent = 'Erro ao carregar lista.';
+      console.error("Falha no carregamento do CSV:", e);
+      throw e; // Re-throw para indicar falha
   }
-  const text = await res.text(); // [cite: 562]
-  AFFIX_PDFS = parseAffixCSV(text); // [cite: 562]
-  AFFIX_INDEX = buildIndex(AFFIX_PDFS); // Constrói o índice [cite: 624]
-  badge.textContent = `${AFFIX_INDEX.length} PDFs indexados.`; //
 }
 
-// Função para parsear CSV (simplificada, adaptada para 3 colunas)
+// Função para parsear CSV (Original - 2 colunas)
 function parseAffixCSV(text){
-  const lines = text.trim().split(/\r?\n/); // [cite: 563]
+  const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return []; // Precisa de cabeçalho + dados
-  const out = []; // [cite: 563]
-  // Assumindo cabeçalho: name,url,keywords
-  for (let i=1; i<lines.length; i++){ // [cite: 564]
-    const line = lines[i].trim(); // [cite: 564]
-    if (!line) continue; // [cite: 564]
-
-    // Lógica simples para separar por vírgula, tratando aspas se necessário (básico)
-    const parts = [];
-    let currentPart = '';
-    let inQuotes = false;
-    for (let j = 0; j < line.length; j++) {
-        const char = line[j];
-        if (char === '"' && (j === 0 || line[j - 1] !== '\\')) { // Trata aspas de forma simples
-            inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-            parts.push(currentPart.trim().replace(/^"|"$/g, '')); // Remove aspas das pontas
-            currentPart = '';
-        } else {
-            currentPart += char;
-        }
+  const out = [];
+  // Assumindo cabeçalho: name,url
+  for (let i=1; i<lines.length; i++){
+    const line = lines[i].trim();
+    if (!line) continue;
+    const idx = line.indexOf(",");
+    if (idx === -1) {
+       console.warn(`Linha ${i+1} ignorada: formato CSV inválido (sem vírgula). Conteúdo: ${line}`);
+       continue;
     }
-    parts.push(currentPart.trim().replace(/^"|"$/g, '')); // Adiciona a última parte
-
-    // Espera 3 colunas: name, url, keywords
-    if (parts.length === 3) {
-      const [name, url, keywords] = parts; // [cite: 566]
-      if (name && url) { // [cite: 566]
-          out.push({ name, url, keywords: keywords || '' }); // Adiciona keywords ou string vazia [cite: 566]
-      }
+    // Simple split assuming no commas within names/URLs themselves
+    const name = line.slice(0, idx).trim().replace(/^"|"$/g, ''); // Remove potential quotes
+    const url  = line.slice(idx + 1).trim().replace(/^"|"$/g, ''); // Remove potential quotes
+    if (name && url) {
+        out.push({ name, url }); // Adiciona só name e url
     } else {
-        console.warn(`Linha ${i+1} ignorada: formato CSV inesperado (esperado 3 colunas). Conteúdo: ${line}`); // Avisa sobre linhas mal formatadas
+        console.warn(`Linha ${i+1} ignorada: nome ou URL ausente após parse. Conteúdo: ${line}`);
     }
   }
-  return out; // [cite: 566]
+  return out;
 }
 
 
 function toggleAffixPrev(i){
-  const el = document.getElementById("affix_prev_" + i); // [cite: 567]
-  if (!el) return; // [cite: 567]
-  el.style.display = (el.style.display === "none" || !el.style.display) ? "block" : "none"; // [cite: 567-568]
+  const el = document.getElementById("affix_prev_" + i);
+  if (!el) return;
+  el.style.display = (el.style.display === "none" || !el.style.display) ? "block" : "none";
 }
 
-// Função googleViewerURL (AJUSTADA para limpar URL)
+// Função googleViewerURL (Original - sem trim extra, mas com encodeURIComponent)
 function googleViewerURL(fileUrl){
-  // <<< AJUSTE AQUI >>>
-  // Garante que a URL esteja limpa (sem espaços) e corretamente codificada para a web
-  const cleaned = String(fileUrl || '').trim(); // Garante que é string e limpa espaços
-  if (!cleaned || cleaned === '#') return ''; // Retorna vazio se não houver URL válida
-  return "https://docs.google.com/viewer?embedded=true&url=" + encodeURIComponent(cleaned); // Codifica corretamente [cite: 568]
+  // Ensure fileUrl is a string before encoding
+  const urlToEncode = String(fileUrl || '').trim(); // Trim added for safety, but encode handles spaces
+  if (!urlToEncode || urlToEncode === '#') return ''; // Avoid encoding '#' or empty strings
+  return "https://docs.google.com/viewer?embedded=true&url=" + encodeURIComponent(urlToEncode);
 }
 
 
-// Função searchAffixPDFs (AJUSTADA para usar window.search e limpar URLs)
+// Função searchAffixPDFs (Versão Original - Busca simples por inclusão, URL direta do CSV)
 async function searchAffixPDFs(q){
-  const list   = $('#affixList'); // [cite: 568]
-  const badge = $('#affixCount'); // [cite: 569]
+  const list   = $('#affixList');
+  const badge = $('#affixCount');
   try {
-    await loadAffixCSV(); // Garante que o índice esteja carregado [cite: 569]
+    await loadAffixCSV(); // Garante que os dados brutos estejam carregados
   } catch(e){
-    badge.textContent='Erro ao carregar lista de PDFs.'; // [cite: 569]
-    list.textContent='Falha no carregamento: '+(e.message||e); // [cite: 569]
-    return; // [cite: 569]
+    badge.textContent='Erro ao carregar lista de PDFs.';
+    list.textContent='Falha no carregamento: '+(e.message||e);
+    return;
   }
 
-  const term = (q||'').toLowerCase().trim(); // [cite: 570]
+  const term = (q||'').toLowerCase().trim(); // Termo de busca normalizado
 
-  // Usa a função search global (que agora tem scoring) passando o índice construído
-  const results = window.search(AFFIX_INDEX, term); // Chama a função search principal com o índice [cite: 647-648]
+  if(!term){ badge.textContent=`${AFFIX_PDFS.length} PDFs carregados.`; list.textContent='—'; return; } // Mostra total se busca vazia
 
-  badge.textContent = `${results.length} resultado(s)`; // [cite: 572]
-  if(!results.length){ list.textContent='—'; return; } // [cite: 572]
+  const tokens = term.split(/\s+/).filter(Boolean); // Quebra busca em palavras
 
-  list.innerHTML = ''; // [cite: 572]
-  let i = 0; // [cite: 572]
-  function pump(){ // [cite: 573]
-    const frag = document.createDocumentFragment(); // [cite: 573]
-    for(let k=0; k<10 && i<results.length; k++, i++){ // [cite: 573]
-      const r = results[i]; // [cite: 573]
-      const row = document.createElement('div'); // [cite: 574]
-      row.className = 'affix-row'; // [cite: 574]
+  // Lógica de filtro original: TODOS os tokens devem estar no nome OU url
+  const results = AFFIX_PDFS.filter(r =>
+    tokens.every(t =>
+      (r.name && r.name.toLowerCase().includes(t)) ||
+      (r.url  && r.url.toLowerCase().includes(t)) // Simple includes check
+    )
+  );
 
-      // <<< AJUSTE PRINCIPAL AQUI (URL Limpa) >>>
-      // Limpa a URL ANTES de usá-la e define um fallback seguro
-      const cleanUrl = r.url ? String(r.url).trim() : '#';
-      // Gera a URL do Google Viewer SÓ SE a URL for válida
-      const viewerUrl = googleViewerURL(cleanUrl); // Chama googleViewerURL com a URL limpa
+  badge.textContent = `${results.length} resultado(s)`;
+  if(!results.length){ list.textContent='—'; return; }
 
-      // Cria o HTML para a linha do resultado
+  list.innerHTML = ''; // Limpa lista
+  let i = 0;
+  function pump(){ // Adiciona resultados aos poucos
+    const frag = document.createDocumentFragment();
+    for(let k=0; k<10 && i<results.length; k++, i++){
+      const r = results[i];
+      const row = document.createElement('div');
+      row.className = 'affix-row';
+
+      // Usa a URL diretamente como lida do CSV (pode conter espaços/etc se o CSV tiver)
+      const urlFromFile = r.url ? String(r.url).trim() : '#'; // <<< ADICIONADO .trim() AQUI por segurança
+      const viewerUrl = googleViewerURL(urlFromFile); // Chama com a URL potencialmente limpa
+
       row.innerHTML =
         `<div><b>${esc(r.name)}</b></div>
          <div class="affix-actions">
-           <button class="btn btn-plain" onclick="window.open('${cleanUrl}','_blank')" ${cleanUrl === '#' ? 'disabled' : ''}>Abrir</button>
-           <button class="btn btn-plain" onclick="toggleAffixPrev(${i})" ${cleanUrl === '#' ? 'disabled' : ''}>Prévia</button>
+           <button class="btn btn-plain" onclick="window.open('${urlFromFile}','_blank')" ${urlFromFile === '#' ? 'disabled' : ''}>Abrir</button>
+           <button class="btn btn-plain" onclick="toggleAffixPrev(${i})" ${urlFromFile === '#' ? 'disabled' : ''}>Prévia</button>
          </div>
          <div id="affix_prev_${i}" class="affix-prev">
-           ${viewerUrl ? // Só mostra o iframe se viewerUrl foi gerada
+           ${viewerUrl ? // Only render iframe if viewerUrl is valid
              `<iframe
                src="${viewerUrl}"
                referrerpolicy="no-referrer"
                loading="lazy"></iframe>`
-              : '<p style="padding: 20px; text-align: center; color: var(--muted);">Prévia indisponível.</p>' // Mensagem mais clara [cite: 575]
+             : '<p style="padding: 20px; text-align: center; color: var(--muted);">Prévia indisponível.</p>'
            }
-         </div>`; // [cite: 574-576]
-      // <<< FIM DO AJUSTE >>>
-
-      frag.appendChild(row); // [cite: 576]
+         </div>`;
+      frag.appendChild(row);
     }
-    list.appendChild(frag); // [cite: 576]
-    if(i < results.length) requestAnimationFrame(pump); // [cite: 576]
+    list.appendChild(frag);
+    if(i < results.length) requestAnimationFrame(pump);
   }
-  pump(); // [cite: 577]
+  pump();
 }
 
-/* ========= Outras Funções da Interface (Sites, CRION, Alerta, Feedback, Widgets) ========= */
+
+/* ========= Outras Funções da Interface (Sites, CRION, Alerta, Feedback, Widgets - Mantidas) ========= */
 
 // --- Funções do Google Apps Script (GAS) ---
-const APP_URL = "https://script.google.com/macros/s/AKfycbzYHcP4jOPyTXuaWJiaLg1Gr5FP_G1mZNCwV33Se-PJ3wjFLjddwEN9fcRNJxBo2Df0ig/exec"; // [cite: 529]
-const $ = s => document.querySelector(s); // [cite: 530]
-const show = (el, on=true)=>{ if(!el) return; el.style.display = on ? '' : 'none'; }; // [cite: 530-531]
-function esc(s){ return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); } // [cite: 531]
-function cleanName(n){ return String(n||'').replace(/^(OCR_TMP_|TMP_SLIDES_)+/ig,''); } // [cite: 531]
-function link(url, txt){ return `<a href="${url}" target="_blank" rel="noopener">${esc(txt||url)}</a>`; } // [cite: 531]
-function humanSize(b){ if(!b||b<=0) return "—"; const u=["B","KB","MB","GB"]; let i=0; while(b>=1024&&i<u.length-1){ b/=1024; i++; } return b.toFixed(1)+" "+u[i]; } // [cite: 532]
+const APP_URL = "https://script.google.com/macros/s/AKfycbzYHcP4jOPyTXuaWJiaLg1Gr5FP_G1mZNCwV33Se-PJ3wjFLjddwEN9fcRNJxBo2Df0ig/exec";
+const $ = s => document.querySelector(s);
+const show = (el, on=true)=>{ if(!el) return; el.style.display = on ? '' : 'none'; };
+function esc(s){ return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;"); }
+function cleanName(n){ return String(n||'').replace(/^(OCR_TMP_|TMP_SLIDES_)+/ig,''); }
+function link(url, txt){ return `<a href="${url}" target="_blank" rel="noopener">${esc(txt||url)}</a>`; }
+function humanSize(b){ if(!b||b<=0) return "—"; const u=["B","KB","MB","GB"]; let i=0; while(b>=1024&&i<u.length-1){ b/=1024; i++; } return b.toFixed(1)+" "+u[i]; }
 
 function call(endpoint, payload){
-  const url = APP_URL + "?fn=" + encodeURIComponent(endpoint); // [cite: 533]
-  return fetch(url, { // [cite: 534]
-    method:"POST", // [cite: 534]
-    headers:{ "Content-Type":"text/plain" }, // [cite: 534]
-    body: JSON.stringify(payload || {}) // [cite: 534]
-  }).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }); // [cite: 534]
+  const url = APP_URL + "?fn=" + encodeURIComponent(endpoint);
+  return fetch(url, {
+    method:"POST",
+    headers:{ "Content-Type":"text/plain" },
+    body: JSON.stringify(payload || {})
+  }).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); });
 }
 
 // --- Widgets (Post-it / Calculadora) ---
 function toggleNoteWrap(isCloseButton){
-    const noteWrap = $('#noteWrap'); // [cite: 536]
-    const noteArea = $('#noteArea'); // [cite: 536]
-    const isVisible = noteWrap.style.display !== 'none'; // Verifica se está visível [cite: 536]
-    if (isCloseButton || isVisible) { // Se for o botão fechar ou já estiver visível
-        show(noteWrap, false); // Esconde [cite: 537]
-    } else { // Se estiver escondido
-        show(noteWrap, true); // Mostra [cite: 538]
-        noteArea.focus(); // Foca na área de texto [cite: 538]
+    const noteWrap = $('#noteWrap');
+    const noteArea = $('#noteArea');
+    const isVisible = noteWrap.style.display !== 'none';
+    if (isCloseButton || isVisible) {
+        show(noteWrap, false);
+    } else {
+        show(noteWrap, true);
+        noteArea.focus();
     }
 }
 function clearNote() {
-    const noteArea = $('#noteArea'); // [cite: 539]
-    noteArea.value=""; localStorage.removeItem('ric_note'); // [cite: 539]
+    const noteArea = $('#noteArea');
+    noteArea.value=""; localStorage.removeItem('ric_note');
 }
 
 function toggleCalcWrap(isCloseButton){
-    const calcWrap = $('#calcWrap'); // [cite: 540]
-    const isVisible = calcWrap.style.display !== 'none'; // Verifica se está visível [cite: 541]
-    if (isCloseButton || isVisible) { // Se for o botão fechar ou já estiver visível
-        show(calcWrap, false); // Esconde [cite: 541]
-    } else { // Se estiver escondido
-        show(calcWrap, true); // Mostra [cite: 542]
-        refresh(); // Atualiza display da calculadora [cite: 542]
+    const calcWrap = $('#calcWrap');
+    const isVisible = calcWrap.style.display !== 'none';
+    if (isCloseButton || isVisible) {
+        show(calcWrap, false);
+    } else {
+        show(calcWrap, true);
+        refresh();
     }
 }
 
-const calc = { buf:"0", op:null, mem:0, fresh:true }; // [cite: 543]
-function refresh(){ $('#scr').textContent = calc.buf; } // [cite: 543]
+const calc = { buf:"0", op:null, mem:0, fresh:true };
+function refresh(){ $('#scr').textContent = calc.buf; }
 function press(k){
-  if(/\d/.test(k)){ calc.buf = (calc.fresh||calc.buf==="0")? k : calc.buf+k; calc.fresh=false; return refresh(); } // [cite: 544]
-  if(k==="00"){ press("0"); press("0"); return; } // [cite: 544]
-  if(k==="."){ if(!calc.buf.includes(".")) calc.buf += "."; calc.fresh=false; return refresh(); } // [cite: 545]
-  if(k==="C"){ calc.buf="0"; calc.op=null; calc.fresh=true; return refresh(); } // [cite: 545]
-  if(k==="±"){ if(calc.buf!=="0") calc.buf = calc.buf.startsWith("-")? calc.buf.slice(1):"-"+calc.buf; return refresh(); } // [cite: 546]
-  if(k==="%"){ calc.buf = String(parseFloat(calc.buf)/100); return refresh(); } // [cite: 546]
-  if("+-*/".includes(k)){ calc.mem=parseFloat(calc.buf); calc.op=k; calc.fresh=true; return; } // [cite: 547]
+  if(/\d/.test(k)){ calc.buf = (calc.fresh||calc.buf==="0")? k : calc.buf+k; calc.fresh=false; return refresh(); }
+  if(k==="00"){ press("0"); press("0"); return; }
+  if(k==="."){ if(!calc.buf.includes(".")) calc.buf += "."; calc.fresh=false; return refresh(); }
+  if(k==="C"){ calc.buf="0"; calc.op=null; calc.fresh=true; return refresh(); }
+  if(k==="±"){ if(calc.buf!=="0") calc.buf = calc.buf.startsWith("-")? calc.buf.slice(1):"-"+calc.buf; return refresh(); }
+  if(k==="%"){ calc.buf = String(parseFloat(calc.buf)/100); return refresh(); }
+  if("+-*/".includes(k)){ calc.mem=parseFloat(calc.buf); calc.op=k; calc.fresh=true; return; }
   if(k==="=" && calc.op){
-    const a=calc.mem, b=parseFloat(calc.buf); // [cite: 547]
-    let v=0; // [cite: 547]
-    switch(calc.op){case "+":v=a+b;break;case "-":v=a-b;break;case "*":v=a*b;break;case "/":v=b===0? "Erro" : a/b;break;} // [cite: 548]
-    calc.buf=String(v); calc.op=null; calc.fresh=true; return refresh(); // [cite: 548]
+    const a=calc.mem, b=parseFloat(calc.buf);
+    let v=0; switch(calc.op){case "+":v=a+b;break;case "-":v=a-b;break;case "*":v=a*b;break;case "/":v=b===0? "Erro" : a/b;break;}
+    calc.buf=String(v); calc.op=null; calc.fresh=true; return refresh();
   }
 }
 
 // --- Feedback ---
 async function doFeedback(){
-  const qFeedback = $('#qFeedback'); // [cite: 549]
-  const feedbackStatus = $('#feedbackStatus'); // [cite: 550]
-  const feedbackBusy = $('#feedbackBusy'); // [cite: 550]
-
-  const q = (qFeedback.value||'').trim(); // [cite: 550]
-  const placeholderText = qFeedback.placeholder; // [cite: 550]
-  if(!q || q === placeholderText){ // [cite: 551]
-    feedbackStatus.textContent='Por favor, digite sua mensagem.'; // [cite: 551]
-    return; // [cite: 551]
-  }
-
-  show(feedbackBusy,true); // [cite: 551]
-  feedbackStatus.textContent='Enviando...'; // [cite: 551]
+  const qFeedback = $('#qFeedback');
+  const feedbackStatus = $('#feedbackStatus');
+  const feedbackBusy = $('#feedbackBusy');
+  const q = (qFeedback.value||'').trim();
+  const placeholderText = qFeedback.placeholder;
+  if(!q || q === placeholderText){ feedbackStatus.textContent='Por favor, digite sua mensagem.'; return; }
+  show(feedbackBusy,true); feedbackStatus.textContent='Enviando...';
   try{
-    const r = await call('savefeedback',{mensagem: q}); // [cite: 552]
-    if(!r || r.ok===false){ // [cite: 553]
-      feedbackStatus.textContent=' Erro ao enviar: '+(r&&r.message?r.message:''); // [cite: 553]
-    } else {
-      feedbackStatus.textContent=' Feedback enviado com sucesso! Obrigado!'; // [cite: 554]
-      qFeedback.value = ''; // [cite: 554]
-    }
-  }catch(e){
-    feedbackStatus.textContent=' Erro na comunicação: '+(e.message||e); // [cite: 555]
-  }finally{
-    show(feedbackBusy,false); // [cite: 555]
-  }
+    const r = await call('savefeedback',{mensagem: q});
+    if(!r || r.ok===false){ feedbackStatus.textContent='❌ Erro ao enviar: '+(r&&r.message?r.message:''); }
+    else { feedbackStatus.textContent='✅ Feedback enviado com sucesso! Obrigado!'; qFeedback.value = ''; }
+  }catch(e){ feedbackStatus.textContent='❌ Erro na comunicação: '+(e.message||e); }
+  finally{ show(feedbackBusy,false); }
 }
 
 // --- Alerta ---
 async function doAlerts(){
-  const msg=$('#alertMsg'), resp=$('#alertResp'); // [cite: 556]
-  const alertBusy = $('#alertBusy'); // [cite: 556]
-  show(msg,false); show(resp,false); show(alertBusy,true); // [cite: 557]
-
+  const msg=$('#alertMsg'), resp=$('#alertResp');
+  const alertBusy = $('#alertBusy');
+  show(msg,false); show(resp,false); show(alertBusy,true);
   try{
-    const r = await call('getalert',{}); // [cite: 557]
-    if(!r || r.ok===false){ msg.textContent="Falha ao consultar."; show(msg,true); return; } // [cite: 557]
-    if(!r.found){ msg.textContent="Sem recado no momento."; show(msg,true); return; } // [cite: 558]
-    msg.textContent = " " + String(r.mensagem||"—").toUpperCase(); show(msg,true); // [cite: 559]
-    if(r.responsavel){ resp.textContent = String(r.responsavel||"").toLowerCase(); show(resp,true); } // [cite: 559]
-  }catch(e){ msg.textContent="Erro: "+(e.message||e); show(msg,true); // [cite: 560]
-  }finally{
-    show(alertBusy,false); // [cite: 560]
-  }
+    const r = await call('getalert',{});
+    if(!r || r.ok===false){ msg.textContent="Falha ao consultar."; show(msg,true); return; }
+    if(!r.found){ msg.textContent="Sem recado no momento."; show(msg,true); return; }
+    msg.textContent = "🚨 " + String(r.mensagem||"—").toUpperCase(); show(msg,true);
+    if(r.responsavel){ resp.textContent = String(r.responsavel||"").toLowerCase(); show(resp,true); }
+  }catch(e){ msg.textContent="Erro: "+(e.message||e); show(msg,true); }
+  finally{ show(alertBusy,false); }
 }
 
 // --- Busca nos Sites (OpenAI) ---
 async function doSites(){
-  const q=($('#qSites').value||'').trim(); // [cite: 576]
-  const sitesBusy = $('#sitesBusy'); // [cite: 577]
-  const outSites = $('#outSites'); // [cite: 577]
-
-  // Chama a busca local de PDFs primeiro
-  searchAffixPDFs(q); // [cite: 577]
-
-  if(!q){ outSites.textContent='Digite a pergunta.'; return; } // [cite: 577]
-  show(sitesBusy,true); outSites.textContent='—'; // [cite: 577]
+  const q=($('#qSites').value||'').trim();
+  const sitesBusy = $('#sitesBusy');
+  const outSites = $('#outSites');
+  // Chama a busca local de PDFs (versão original)
+  searchAffixPDFs(q);
+  if(!q){ outSites.textContent='Digite a pergunta.'; return; }
+  show(sitesBusy,true); outSites.textContent='—';
   try{
-    // Adiciona instrução de formatação e fonte ao prompt
-    const qRich = q + " — FORMATO: responda em português com texto útil e liste as URLs oficiais no final. Substitua observações por: 'Fontes oficiais Affix, Alter, Hapvida'."; // [cite: 578]
-    const r = await call('chat',{q:qRich}); // Chama a API do GAS [cite: 579]
-    const txt = (r && r.text) ? r.text : '—'; // [cite: 579]
-    // Transforma URLs em links clicáveis no HTML
-    const html = String(txt).replace(/(https?:\/\/[^\s<]+)/g, m=>`<a href="${m}" target="_blank" rel="noopener">${m}</a>`); // [cite: 580]
-    outSites.innerHTML = html; // [cite: 580]
-  }catch(e){ outSites.textContent='Erro: '+(e.message||e); // [cite: 580]
-  }finally{ show(sitesBusy,false); // [cite: 580]
-  }
+    const qRich = q + " — FORMATO: responda em português com texto útil e liste as URLs oficiais no final. Substitua observações por: 'Fontes oficiais Affix, Alter, Hapvida'.";
+    const r = await call('chat',{q:qRich}); // Chama a API do GAS
+    const txt = (r && r.text) ? r.text : '—';
+    const html = String(txt).replace(/(https?:\/\/[^\s<]+)/g, m=>`<a href="${m}" target="_blank" rel="noopener">${m}</a>`);
+    outSites.innerHTML = html;
+  }catch(e){ outSites.textContent='Erro: '+(e.message||e); }
+  finally{ show(sitesBusy,false); }
 }
 
 // --- Busca CRION (Procedimentos Indexados no GAS) ---
 async function doCRION(){
-  const q=($('#qCRION').value||'').trim(); // [cite: 581]
-  const crionStatus = $('#crionStatus'); // [cite: 581]
-  const crionList = $('#crionList'); // [cite: 582]
-  const crionBusy = $('#crionBusy'); // [cite: 582]
-
-  if(!q){ crionStatus.textContent='Digite um termo.'; return; } // [cite: 582]
-  show(crionBusy,true); crionStatus.textContent='Listando arquivos…'; crionList.innerHTML=""; // [cite: 582]
+  const q=($('#qCRION').value||'').trim();
+  const crionStatus = $('#crionStatus');
+  const crionList = $('#crionList');
+  const crionBusy = $('#crionBusy');
+  if(!q){ crionStatus.textContent='Digite um termo.'; return; }
+  show(crionBusy,true); crionStatus.textContent='Listando arquivos…'; crionList.innerHTML="";
   try{
-    const res = await call('searchcrion',{q}); // Chama API do GAS para buscar [cite: 583]
-    if(!res || res.ok===false){ crionStatus.textContent='Erro ao buscar: '+(res&&res.message?res.message:''); return; } // [cite: 583]
-    const items=res.items||[]; crionStatus.textContent=`Resultados: ${items.length}`; // [cite: 584]
-    const frag=document.createDocumentFragment(); // [cite: 584]
-    items.forEach((it,idx)=>{ // [cite: 585]
-      const li=document.createElement('li'); li.style.padding="10px 0"; li.style.borderTop="1px solid var(--line)"; li.id='crion_'+idx; // [cite: 585]
-      const meta   = `<div class="hint">Tamanho: ${humanSize(it.size||0)} • Atualizado: ${it.updated? new Date(it.updated).toLocaleString(): "—"}</div>`; // [cite: 585]
+    const res = await call('searchcrion',{q}); // Chama API do GAS para buscar
+    if(!res || res.ok===false){ crionStatus.textContent='Erro ao buscar: '+(res&&res.message?res.message:''); return; }
+    const items=res.items||[]; crionStatus.textContent=`Resultados: ${items.length}`;
+    const frag=document.createDocumentFragment();
+    items.forEach((it,idx)=>{
+      const li=document.createElement('li'); li.style.padding="10px 0"; li.style.borderTop="1px solid var(--line)"; li.id='crion_'+idx;
+      const meta   = `<div class="hint">Tamanho: ${humanSize(it.size||0)} • Atualizado: ${it.updated? new Date(it.updated).toLocaleString(): "—"}</div>`;
       li.innerHTML=`<div><b>${esc(cleanName(it.name))}</b> • ${link(it.url,'Abrir')}</div>${meta}
-                   <div class="hint" id="snip_crion_${idx}">Carregando prévias…</div>`; // [cite: 585]
-      frag.appendChild(li); // [cite: 585]
+                   <div class="hint" id="snip_crion_${idx}">Carregando prévias…</div>`;
+      frag.appendChild(li);
     });
-    crionList.appendChild(frag); // [cite: 586]
+    crionList.appendChild(frag);
     if(items.length){
-      let from=0; // [cite: 586]
+      let from=0;
       while(from < items.length){
-        const r = await call('fetchcrionsnippets',{sessionId:res.sessionId, from, limit:6}); // Busca snippets [cite: 586]
-        (r.items||[]).forEach(row=>{ // [cite: 587]
-          const el=$('#snip_crion_'+row.index); // [cite: 587]
-          el.innerHTML=(row.snippets && row.snippets.length)? row.snippets.map(s=>`<div style="color:#374151;margin:6px 0">${esc(s)}</div>`).join("") : '<span class="hint">—</span>'; // [cite: 587]
+        const r = await call('fetchcrionsnippets',{sessionId:res.sessionId, from, limit:6}); // Busca snippets
+        (r.items||[]).forEach(row=>{
+          const el=$('#snip_crion_'+row.index);
+          el.innerHTML=(row.snippets && row.snippets.length)? row.snippets.map(s=>`<div style="color:#374151;margin:6px 0">${esc(s)}</div>`).join("") : '<span class="hint">—</span>';
         });
-        from = r.to; // [cite: 588]
+        from = r.to;
       }
-      crionStatus.textContent += " • prévias completas"; // [cite: 588]
+      crionStatus.textContent += " • prévias completas";
     }
-  }catch(e){ crionStatus.textContent='Erro: '+(e.message||e); // [cite: 588]
-  }finally{ show(crionBusy,false); } // [cite: 589]
+  }catch(e){ crionStatus.textContent='Erro: '+(e.message||e); }
+  finally{ show(crionBusy,false); }
 }
 
 // --- Inicialização e Event Listeners ---
-window.onload = function() { // [cite: 589]
+window.onload = function() {
 
     // Configuração dos botões principais
-    $('#btnAlert').addEventListener('click', doAlerts); // [cite: 589]
-    $('#btnSites').addEventListener('click', doSites); // [cite: 590]
-    $('#btnCRION').addEventListener('click', doCRION); // [cite: 590]
-    $('#btnFeedback').addEventListener('click', doFeedback); // [cite: 590]
+    $('#btnAlert').addEventListener('click', doAlerts);
+    $('#btnSites').addEventListener('click', doSites);
+    $('#btnCRION').addEventListener('click', doCRION);
+    $('#btnFeedback').addEventListener('click', doFeedback);
 
     // Configuração dos Widgets (Post-it / Calculadora)
-    $('#toggleNote').addEventListener('click', () => toggleNoteWrap(false)); // [cite: 590]
-    $('#closeNote').addEventListener('click', () => toggleNoteWrap(true)); // Passa true para indicar que é o botão fechar [cite: 591]
-    $('#clearNote').addEventListener('click', clearNote); // [cite: 591]
+    $('#toggleNote').addEventListener('click', () => toggleNoteWrap(false));
+    $('#closeNote').addEventListener('click', () => toggleNoteWrap(true)); // Passa true para indicar que é o botão fechar
+    $('#clearNote').addEventListener('click', clearNote);
 
-    $('#toggleCalc').addEventListener('click', () => toggleCalcWrap(false)); // [cite: 591]
-    $('#closeCalc').addEventListener('click', () => toggleCalcWrap(true)); // Passa true para indicar que é o botão fechar [cite: 591]
+    $('#toggleCalc').addEventListener('click', () => toggleCalcWrap(false));
+    $('#closeCalc').addEventListener('click', () => toggleCalcWrap(true)); // Passa true para indicar que é o botão fechar
 
     // Calculadora Key Presses
-    const keys = $('#keys'); // [cite: 592]
-    if (keys) { // [cite: 593]
-        keys.addEventListener('click', e => { // [cite: 593]
-            const k = e.target.dataset.k; // [cite: 593]
-            if(k) press(k); // [cite: 593]
+    const keys = $('#keys');
+    if (keys) {
+        keys.addEventListener('click', e => {
+            const k = e.target.dataset.k;
+            if(k) press(k);
         });
     }
 
     // Post-it Persistence
-    const noteArea = $('#noteArea'); // [cite: 594]
-    if (noteArea) { // [cite: 595]
-        noteArea.value = localStorage.getItem('ric_note') || ""; // [cite: 595]
-        noteArea.addEventListener('input', ()=> localStorage.setItem('ric_note', noteArea.value)); // [cite: 595]
+    const noteArea = $('#noteArea');
+    if (noteArea) {
+        noteArea.value = localStorage.getItem('ric_note') || "";
+        noteArea.addEventListener('input', ()=> localStorage.setItem('ric_note', noteArea.value));
     }
 
     // Melhorias de UX (Enter nas buscas)
-    const qSites = $('#qSites'); // [cite: 596]
-    const btnSites = $('#btnSites'); // [cite: 597]
-    if(qSites && btnSites) qSites.addEventListener('keydown', e=>{ if(e.key==='Enter') btnSites.click(); }); // [cite: 597]
+    const qSites = $('#qSites');
+    const btnSites = $('#btnSites');
+    if(qSites && btnSites) qSites.addEventListener('keydown', e=>{ if(e.key==='Enter') btnSites.click(); });
 
-    const qCRION = $('#qCRION'); // [cite: 597]
-    const btnCRION = $('#btnCRION'); // [cite: 597]
-    if(qCRION && btnCRION) qCRION.addEventListener('keydown', e=>{ if(e.key==='Enter') btnCRION.click(); }); // [cite: 598]
+    const qCRION = $('#qCRION');
+    const btnCRION = $('#btnCRION');
+    if(qCRION && btnCRION) qCRION.addEventListener('keydown', e=>{ if(e.key==='Enter') btnCRION.click(); });
 
-    // Carrega a lista de PDFs ao iniciar (para agilizar a primeira busca)
+    // Helper para fechar widget (não estava definido antes)
+    function closeWidget(wrapId) {
+       const el = document.getElementById(wrapId);
+       if (el) el.style.display = 'none';
+    }
+
+    // Carrega a lista de PDFs ao iniciar (para agilizar a primeira busca - versão original)
     loadAffixCSV().catch(err => {
-      console.error("Falha inicial ao carregar CSV:", err); //
-      $('#affixCount').textContent = 'Erro ao carregar lista.'; //
+      console.error("Falha inicial ao carregar CSV:", err);
+      $('#affixCount').textContent = 'Erro ao carregar lista.';
     });
 };
 
-/* ========= Export (browser global) ========= */
-window.buildIndex = buildIndex; // [cite: 647]
-window.search     = search; // [cite: 647]
+/* ========= Export (browser global) - Mantido caso necessário ========= */
+window.buildIndex = buildIndex;
+window.search     = search;
