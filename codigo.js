@@ -193,16 +193,15 @@ function hasESManual(raw){
   return /(^|[^A-Za-z])ES([^A-Za-z].*manual|$)|manual[^A-Za-z].*ES([^A-Za-z]|$)/i.test(raw);
 }
 // Função passUFStrict (Verifica se o item pertence à UF)
-// Usada tanto na busca exata quanto na refinada
 function passUFStrict(it, uf){
   if(!uf) return true; // Se não buscou por UF, passa
   // Verifica se o índice (agora enriquecido por buildIndex) contém a UF
   if(it.ufs.has(uf)) return true;
   // Regras específicas (ex: ES-Manual) ainda podem ser úteis como fallback
   if(uf==="es" && (hasESManual(it.nameRaw)||hasESManual(it.urlRaw))) return true;
-  // Verifica sigla forte no nome ou URL como fallback final
-  // return hasUFStrong(it.nameRaw, uf) || hasUFStrong(it.urlRaw, uf); // Desativado temporariamente para priorizar ufs set
-  return false; // Se não está no set ufs (enriquecido), não passa no filtro estrito
+  // Verifica sigla forte no nome ou URL como fallback final (Reativado por segurança)
+  if (hasUFStrong(it.nameRaw, uf) || hasUFStrong(it.urlRaw, uf)) return true;
+  return false; // Se não está no set ufs (enriquecido) E não tem sigla forte, não passa
 }
 
 /* ========= Indexação (Original + Associação Cidade->UF + DEBUG) ========= */
@@ -241,16 +240,17 @@ function buildIndex(rows){
     const cities=new Set();
     for(const [base,alts] of Object.entries(CITY_ALIASES)){
       const all=[base, ...alts.map(norm)];
+      // Usa containsPhrase para checar se a cidade (ou alias) está no slug
       if(all.some(a=>containsPhrase(slug,a))) {
-          cities.add(base);
+          cities.add(base); // Adiciona a cidade base encontrada
           // <<< NOVO: Associa cidade à UF >>>
-          const ufForCity = CITY_TO_UF_MAP[base];
+          const ufForCity = CITY_TO_UF_MAP[base]; // Busca UF no novo mapa
           if (ufForCity) {
               // <<< DEBUG LOG ADICIONADO >>>
               const added = ufs.has(ufForCity); // Verifica se já tinha
               ufs.add(ufForCity); // Adiciona a UF correspondente
               // Loga APENAS se adicionou algo novo E for uma cidade de MG
-              if (!added && (base === 'belo horizonte' || base === 'uberlandia' || base === 'uberaba')) {
+              if (!added && ['belo horizonte', 'uberlandia', 'uberaba'].includes(base)) {
                  console.log(`[DEBUG buildIndex] Associou UF '${ufForCity}' pela cidade '${base}' no arquivo: ${nameRaw}`);
               }
               // <<< FIM DO DEBUG LOG >>>
@@ -362,7 +362,7 @@ function search(index,q){
   // Obtém termos (sem UF/Cidade), UF detectada, Cidade detectada, e flags
   const {terms, uf, cityLock, queryIsOnlyUF, queryIsOnlyCity} = expandQuery(q);
 
-  // console.log(`[DEBUG search] Buscando com UF: ${uf}, CityLock: ${cityLock}, Terms: ${Array.from(terms).join(',')}`); // Log da busca
+  // console.log(`[DEBUG search] Buscando com UF: ${uf}, CityLock: ${cityLock}, Terms: ${Array.from(terms).join(',')}, IsOnlyUF: ${queryIsOnlyUF}, IsOnlyCity: ${queryIsOnlyCity}`); // Log da busca
 
   const brandFilter = hasAffix || hasAlter;
   const passBrand = it =>
@@ -387,8 +387,6 @@ function search(index,q){
     }
   }
 
-  const hasExact = results.length > 0;
-
   // 2) Lógica Refinada: Considera UF/Cidade e termos restantes
   for(const it of index){
     // Evita duplicar se já está nos resultados exatos
@@ -396,8 +394,10 @@ function search(index,q){
 
     // Aplica filtros de marca, UF e cidade
     if(!passBrand(it) || !passUF(it) || !passCity(it)) {
-        // Log por que foi filtrado (opcional, pode gerar muito log)
-        // if (uf && !passUF(it)) console.log(`[DEBUG search] Filtrado por UF: ${it.name} (UF esperada: ${uf}, UFs do item: ${Array.from(it.ufs).join(',')})`);
+        // Log por que foi filtrado (ATIVADO PARA DEBUG)
+        if (uf && !passUF(it) && (it.cities.has('belo horizonte') || it.cities.has('uberlandia') || it.cities.has('uberaba'))) {
+            console.log(`[DEBUG search] Filtrado por UF: ${it.name} (UF esperada: ${uf}, UFs do item: ${Array.from(it.ufs).join(',')})`);
+        }
         // if (cityLock && !passCity(it)) console.log(`[DEBUG search] Filtrado por Cidade: ${it.name} (Cidade esperada: ${cityLock}, Cidades do item: ${Array.from(it.cities).join(',')})`);
         continue;
     }
@@ -408,8 +408,8 @@ function search(index,q){
     let allTermsFoundInNonGeoQuery = true; // Flag para AND estrito dos termos não-geográficos
 
     // Caso 1: A busca foi SÓ pela UF OU SÓ pela Cidade
+    // Se passou nos filtros geográficos, é um resultado
     if (queryIsOnlyUF || queryIsOnlyCity) {
-        // Se passou nos filtros geográficos, é um resultado
         currentScore = 500; // Pontuação base para match geográfico
     }
     // Caso 2: A busca tinha termos além da UF/Cidade
@@ -436,19 +436,26 @@ function search(index,q){
            continue;
         }
     }
-    // Caso 3: Busca vazia (já tratada antes de chamar search) ou erro
+    // Caso 3: Busca vazia OU busca geográfica sem match (já filtrado antes)
     else if (!queryIsOnlyUF && !queryIsOnlyCity) {
          continue; // Descarta se não tem termos e não era busca geográfica pura
     }
 
-    // Adiciona score de data
-    currentScore += it.dscore / 100;
-    // Adiciona um pequeno bônus se a UF/Cidade específica foi encontrada no item
-    if (uf && it.ufs.has(uf)) currentScore += 5;
-    if (cityLock && it.cities.has(cityLock)) currentScore += 10;
 
-    results.push({it, score: currentScore});
-    // console.log(`[DEBUG search] Match REFINADO: ${it.name} (Score: ${currentScore})`); // Log match refinado
+    // Adiciona ao resultado APENAS se teve alguma pontuação
+    if (currentScore > 0) {
+        // Adiciona score de data
+        currentScore += it.dscore / 100;
+        // Adiciona um pequeno bônus se a UF/Cidade específica foi encontrada no item
+        if (uf && it.ufs.has(uf)) currentScore += 5;
+        if (cityLock && it.cities.has(cityLock)) currentScore += 10;
+
+        // Verifica se já não foi adicionado pelo match exato
+        if (!results.some(r => r.it === it)) {
+             results.push({it, score: currentScore});
+             // console.log(`[DEBUG search] Match REFINADO: ${it.name} (Score: ${currentScore})`); // Log match refinado
+        }
+    }
   }
 
   // Ordena por score descendente, depois por nome ascendente
