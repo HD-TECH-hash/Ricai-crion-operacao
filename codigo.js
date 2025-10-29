@@ -1,4 +1,4 @@
-// codigo.js — CRION busca de alta precisão (index local, mínima alucinação)
+// codigo.js — CRION busca de alta precisão (index local, mínima alucinação) - VERSÃO SCORING + CORREÇÃO URL
 
 /* ========= UF: sigla ↔ nome (com e sem acento) ========= */
 const UF_MAP = {
@@ -112,44 +112,70 @@ function passUFStrict(it, uf){
   return hasUFStrong(it.nameRaw, uf) || hasUFStrong(it.urlRaw, uf);
 }
 
-/* ========= Indexação (Versão Original - 2 colunas) ========= */
+/* ========= Indexação com Keywords do CSV (ATUALIZADO) ========= */
 function buildIndex(rows){
   const seen=new Set(), out=[];
   for(const r of rows){
-    // Espera apenas name e url
-    if(!r || !r.name || !r.url) continue;
+    // Verifica se a linha tem as 3 colunas esperadas (name, url, keywords)
+    if(!r || !r.name || !r.url || typeof r.keywords === 'undefined') continue; // Pula linha mal formatada
 
     let url=String(r.url).trim();
     if(/^http:\/\//i.test(url)) url=url.replace(/^http:\/\//i,"https://"); // força https
-    if(!/^https?:\/\/[^\s]+$/i.test(url)) continue;
-    if(seen.has(url)) continue; seen.add(url);
+    if(!/^https?:\/\/[^\s]+$/i.test(url)) continue; // Valida URL
+    if(seen.has(url)) continue; seen.add(url); // Evita duplicatas pela URL
 
     const nameRaw = String(r.name);
     const urlRaw  = url;
+    const keywordsRaw = String(r.keywords || ''); // Pega a string de keywords
 
     const nameN = norm(nameRaw);
     const urlN  = norm(urlRaw);
-    // Slug e Kws baseados apenas em name e url
-    const slug  = wordsSlug(nameRaw+" "+urlRaw);
-    const kws   = new Set(tokenize(nameRaw).concat(tokenize(urlRaw)));
+    const keywordsN = norm(keywordsRaw); // Normaliza as keywords também
 
-    // --- Lógica de UFs e Cidades ---
+    // O slug agora inclui palavras do nome, URL e keywords
+    const slug  = wordsSlug(nameRaw + " " + urlRaw + " " + keywordsRaw); // Adiciona keywords ao slug
+
+    // O conjunto kws agora inclui tokens do nome, URL e keywords
+    const kws   = new Set([
+      ...tokenize(nameRaw),
+      ...tokenize(urlRaw),
+      ...tokenize(keywordsRaw) // Adiciona tokens das keywords
+    ]);
+
+    // --- O restante da lógica de detecção de UFs e Cidades permanece igual ---
     const ufs=new Set();
     for(const [uf,alts] of Object.entries(UF_MAP)){
       const altsN=[uf, ...alts.map(norm)];
+      // Verifica se algum alias da UF está no slug (que agora inclui keywords)
       if(altsN.some(a=>containsWord(slug,a))) ufs.add(uf);
+      // Mantém a verificação forte na URL e Nome originais
       else if(hasUFStrong(nameRaw,uf) || hasUFStrong(urlRaw,uf)) ufs.add(uf);
     }
-    if(hasESManual(nameRaw) || hasESManual(urlRaw)) ufs.add("es"); // reforço ES-Manual
+    if(hasESManual(nameRaw) || hasESManual(urlRaw)) ufs.add("es"); // Reforço ES-Manual
 
     const cities=new Set();
     for(const [base,alts] of Object.entries(CITY_ALIASES)){
       const all=[base, ...alts.map(norm)];
+      // Verifica se algum alias da cidade está no slug (que agora inclui keywords)
       if(all.some(a=>containsPhrase(slug,a))) cities.add(base);
     }
-    // -----------------------------
+    // --------------------------------------------------------------------
 
-    out.push({ name:r.name, url:urlRaw, nameN, urlN, slug, kws, ufs, cities, dscore:dateScore({nameN}), nameRaw, urlRaw });
+    // Adiciona o campo 'tags' (versão normalizada das keywords) ao objeto do índice
+    out.push({
+      name:r.name,
+      url:urlRaw,
+      nameN,
+      urlN,
+      slug,
+      kws,
+      ufs,
+      cities,
+      tags: new Set(tokenize(keywordsRaw)), // Guarda os tokens das keywords separadamente
+      dscore:dateScore({nameN}),
+      nameRaw,
+      urlRaw
+    });
   }
   return out;
 }
@@ -199,62 +225,129 @@ function expandQuery(q){
   return {terms:new Set([...parts, ...extra, ...(uf?[uf]:[])]), uf};
 }
 
-/* ========= Busca (Versão Original - AND Estrito) ========= */
-function search(index,q){
-  if(!index?.length) return [];
-  const qn = norm(q||""); if(!qn) return [];
+/* ========= Busca Refinada com Scoring (ATUALIZADO) ========= */
+function search(index, q) {
+  if (!index?.length) return [];
+  const qn = norm(q || ""); if (!qn) return [];
+  const { hasAffix, hasAlter } = detectBrands(qn);
+  const { terms, uf, cityLock } = expandQuery(q); // Obtém termos normalizados, UF e cidade (se houver)
 
-  const {hasAffix,hasAlter} = detectBrands(qn);
-  const {terms, uf, cityLock} = expandQuery(q);
-
+  // Filtros básicos (marca, UF estrita, cidade específica)
   const brandFilter = hasAffix || hasAlter;
   const passBrand = it =>
     !brandFilter ||
-    (hasAffix && it.url.includes(BRAND_DOMAINS.affix)) ||
-    (hasAlter && it.url.includes(BRAND_DOMAINS.alter));
-  const passCity = it => !cityLock || containsPhrase(it.slug, cityLock);
+    (hasAffix && it.url.includes(BRAND_DOMAINS.affix)) || // Verifica se URL contém o domínio da marca
+    (hasAlter && it.url.includes(BRAND_DOMAINS.alter)); // Verifica se URL contém o domínio da marca
+  const passCity = it => !cityLock || containsPhrase(it.slug, cityLock); // Verifica se slug contém a frase da cidade
 
-  // 1) frase exata no name/url
-  const exact=[];
-  for(const it of index){
-    if(!passBrand(it) || !passUFStrict(it,uf) || !passCity(it)) continue;
-    if(it.nameN.includes(qn) || it.urlN.includes(qn)){
-      exact.push({it, score:1000 + it.dscore});
+  const results = [];
+  for (const it of index) {
+    // Aplica filtros iniciais
+    if (!passBrand(it) || !passUFStrict(it, uf) || !passCity(it)) continue; // Pula se não passar nos filtros de marca, UF estrita ou cidade
+
+    let score = 0;
+    let matchedTermsCount = 0;
+    const matchedInName = new Set();
+    const matchedInUrl = new Set();
+    // const matchedInTags = new Set(); // Descomentar se adicionar tags ao índice
+
+    // 1. Match exato da frase (pontuação máxima)
+    const exactMatch = it.nameN.includes(qn) || it.urlN.includes(qn); // Verifica se nome ou URL normalizado contém a query exata
+    if (exactMatch) {
+      score = 10000; // Pontuação muito alta para match exato
+      matchedTermsCount = terms.size;
+    } else {
+      // 2. Pontuação baseada nos termos individuais
+      terms.forEach(term => {
+        let termFound = false;
+        const termPattern = ` ${term} `; // Procura palavra inteira (com espaços)
+        const termStartPattern = `${term} `;
+        const termEndPattern = ` ${term}`;
+
+        // Prioridade 1: Termo no nome ou URL (usando slug para verificar) ou KWS
+        // Verifica se o termo está no slug (que inclui palavras do nome, URL e keywords)
+        if (containsWord(it.slug, term)) { // Usa containsWord para verificar slug
+           // Verifica especificamente no nome para dar mais peso
+           if (it.nameN.includes(termPattern) || it.nameN.startsWith(termStartPattern) || it.nameN.endsWith(termEndPattern) || it.nameN === term) {
+              score += 100; // Peso maior para match no nome
+              matchedInName.add(term);
+              termFound = true;
+           }
+           // Verifica na URL se não achou no nome (peso médio)
+           else if (it.urlN.includes(termPattern) || it.urlN.includes(`/${term}/`) || it.urlN.endsWith(`/${term}`) || it.urlN.endsWith(`-${term}.pdf`)) { // Adiciona verificações na URL
+              score += 50; // Peso menor para match na URL
+              matchedInUrl.add(term);
+              termFound = true;
+           }
+           // Adicionar lógica para tags aqui, se implementado
+           // else if (it.tags && it.tags.has(term)) { score += 20; matchedInTags.add(term); termFound = true; }
+        }
+
+         // Mesmo se não for palavra inteira, verifica se o token está contido (peso baixo) - para siglas grudadas etc.
+         if (!termFound && (it.kws.has(term))) { // Verifica se o token existe no conjunto de keywords
+            score += 10; // Peso baixo para match parcial ou em kws
+             // Tenta atribuir a nome ou url para desempate
+             if (it.nameN.includes(term)) matchedInName.add(term);
+             else if (it.urlN.includes(term)) matchedInUrl.add(term);
+            termFound = true;
+         }
+
+
+        if (termFound) {
+          matchedTermsCount++;
+        }
+      });
+
+      // Boost se todos os termos foram encontrados
+      if (matchedTermsCount === terms.size && terms.size > 0) {
+        score += 500; // Bônus significativo por encontrar todos os termos
+      }
+
+       // Boost adicional se a UF específica foi encontrada E estava na query
+      if (uf && it.ufs.has(uf)) { // Verifica se a UF do item bate com a UF da query
+         score += 150;
+      }
+      // Boost adicional se a cidade específica foi encontrada E estava na query
+       if (cityLock && it.cities.has(cityLock)) { // Verifica se a cidade do item bate com a cidade travada da query
+          score += 200; // Boost maior para cidade
+       }
+
+      // Adiciona o score de data (boost leve para arquivos mais recentes)
+      score += it.dscore / 50; // Ajuste o divisor para controlar o peso da data
+    }
+
+    // Adiciona aos resultados apenas se tiver pontuação
+    if (score > 0) {
+      results.push({
+        it,
+        score,
+        matchedTermsCount,
+        // debug: { nameM: [...matchedInName], urlM: [...matchedInUrl] } // Para depuração
+      });
     }
   }
-  if(exact.length){
-    return exact
-      .sort((a,b)=> b.score-a.score || a.it.name.localeCompare(b.it.name))
-      .map(x=>({name:x.it.name, url:x.it.url}));
-  }
 
-  // 2) AND estrito de palavras inteiras
-  const strict=[];
-  for(const it of index){
-    if(!passBrand(it) || !passUFStrict(it,uf) || !passCity(it)) continue;
-    // Verifica se TODOS os termos estão no slug ou kws
-    const ok = [...terms].every(t => containsWord(it.slug,t) || it.kws.has(t));
-    if(!ok) continue;
-    strict.push({it, score:500 + terms.size*10 + it.dscore/100});
-  }
-  if(strict.length){
-    return strict
-      .sort((a,b)=> b.score-a.score || a.it.name.localeCompare(b.it.name))
-      .map(x=>({name:x.it.name, url:x.it.url}));
-  }
-
-  // 3) sem resultados → nada (evita ruído)
-  return [];
+  // Ordena os resultados:
+  // 1. Maior Score
+  // 2. Maior número de termos encontrados
+  // 3. Ordem alfabética do nome (desempate)
+  return results
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.matchedTermsCount !== a.matchedTermsCount) return b.matchedTermsCount - a.matchedTermsCount;
+      return a.it.name.localeCompare(b.it.name);
+    })
+    .map(x => ({ name: x.it.name, url: x.it.url /*, score: x.score */ })); // Retorna apenas nome e URL
 }
 
 
-/* ========= Carregamento CSV e Busca (Interface - Versão Original) ========= */
+/* ========= Carregamento CSV e Busca (Interface - Versão Scoring + Correção URL) ========= */
 const AFFIX_CSV_URL = "data/affix/affix_pdfs_manifest.csv";
-let AFFIX_PDFS = []; // Guarda os dados brutos
-let AFFIX_INDEX = []; // Guarda o índice construído (não usado diretamente nesta versão)
+let AFFIX_PDFS = []; // Guarda os dados brutos parseados
+let AFFIX_INDEX = []; // Guarda o índice construído
 
 async function loadAffixCSV(){
-  if (AFFIX_PDFS.length) return; // Só carrega uma vez
+  if (AFFIX_INDEX.length) return; // Só carrega e indexa uma vez
   const badge = $('#affixCount');
   badge.textContent = 'Carregando lista de PDFs...';
   try {
@@ -264,38 +357,59 @@ async function loadAffixCSV(){
         throw new Error(`HTTP error ${res.status}`);
     }
     const text = await res.text();
-    AFFIX_PDFS = parseAffixCSV(text); // Guarda os dados brutos
-    // Build index could be called here if needed by original search logic, but seems it wasn't
-    // AFFIX_INDEX = buildIndex(AFFIX_PDFS);
-    badge.textContent = `${AFFIX_PDFS.length} PDFs carregados.`; // Avisa que carregou
+    AFFIX_PDFS = parseAffixCSV(text); // Parseia o CSV (espera 3 colunas)
+    AFFIX_INDEX = buildIndex(AFFIX_PDFS); // Constrói o índice usando buildIndex (que espera 3 colunas)
+    badge.textContent = `${AFFIX_INDEX.length} PDFs indexados.`;
   } catch (e) {
       badge.textContent = 'Erro ao carregar lista.';
-      console.error("Falha no carregamento do CSV:", e);
-      throw e; // Re-throw para indicar falha
+      console.error("Falha no carregamento ou indexação do CSV:", e);
+      // Não re-throw para permitir que o resto da UI funcione, mas avisa
   }
 }
 
-// Função para parsear CSV (Original - 2 colunas)
+// Função para parsear CSV (ATUALIZADA para 3 colunas)
 function parseAffixCSV(text){
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return []; // Precisa de cabeçalho + dados
   const out = [];
-  // Assumindo cabeçalho: name,url
+  // Assumindo cabeçalho: name,url,keywords
   for (let i=1; i<lines.length; i++){
     const line = lines[i].trim();
     if (!line) continue;
-    const idx = line.indexOf(",");
-    if (idx === -1) {
-       console.warn(`Linha ${i+1} ignorada: formato CSV inválido (sem vírgula). Conteúdo: ${line}`);
-       continue;
+
+    // Lógica simples para separar por vírgula, tratando aspas se necessário (básico)
+    const parts = [];
+    let currentPart = '';
+    let inQuotes = false;
+    for (let j = 0; j < line.length; j++) {
+        const char = line[j];
+        if (char === '"' && (j === 0 || line[j - 1] !== '\\')) { // Trata aspas de forma simples
+            inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+            // Remove aspas das pontas APENAS se estiverem presentes
+            const trimmedPart = currentPart.trim();
+            parts.push(trimmedPart.startsWith('"') && trimmedPart.endsWith('"') ? trimmedPart.slice(1, -1) : trimmedPart);
+            currentPart = '';
+        } else {
+            currentPart += char;
+        }
     }
-    // Simple split assuming no commas within names/URLs themselves
-    const name = line.slice(0, idx).trim().replace(/^"|"$/g, ''); // Remove potential quotes
-    const url  = line.slice(idx + 1).trim().replace(/^"|"$/g, ''); // Remove potential quotes
-    if (name && url) {
-        out.push({ name, url }); // Adiciona só name e url
+    // Adiciona a última parte
+    const lastPartTrimmed = currentPart.trim();
+    parts.push(lastPartTrimmed.startsWith('"') && lastPartTrimmed.endsWith('"') ? lastPartTrimmed.slice(1, -1) : lastPartTrimmed);
+
+
+    // Espera 3 colunas: name, url, keywords
+    if (parts.length === 3) {
+      const [name, url, keywords] = parts;
+      // Validação básica de URL
+      if (name && url && url.toLowerCase().startsWith('http')) {
+          out.push({ name, url, keywords: keywords || '' }); // Adiciona keywords ou string vazia
+      } else {
+          console.warn(`Linha ${i+1} ignorada: nome, URL inválida ou ausente. Conteúdo: ${line}`);
+      }
     } else {
-        console.warn(`Linha ${i+1} ignorada: nome ou URL ausente após parse. Conteúdo: ${line}`);
+        console.warn(`Linha ${i+1} ignorada: formato CSV inesperado (esperado 3 colunas, encontrado ${parts.length}). Conteúdo: ${line}`);
     }
   }
   return out;
@@ -308,62 +422,52 @@ function toggleAffixPrev(i){
   el.style.display = (el.style.display === "none" || !el.style.display) ? "block" : "none";
 }
 
-// Função googleViewerURL (Original - sem trim extra, mas com encodeURIComponent)
+// Função googleViewerURL (CORRIGIDA - com trim e encodeURIComponent)
 function googleViewerURL(fileUrl){
-  // Ensure fileUrl is a string before encoding
-  const urlToEncode = String(fileUrl || '').trim(); // Trim added for safety, but encode handles spaces
-  if (!urlToEncode || urlToEncode === '#') return ''; // Avoid encoding '#' or empty strings
-  return "https://docs.google.com/viewer?embedded=true&url=" + encodeURIComponent(urlToEncode);
+  const cleaned = String(fileUrl || '').trim(); // Garante que é string e limpa espaços
+  if (!cleaned || cleaned === '#') return ''; // Retorna vazio se não houver URL válida
+  return "https://docs.google.com/viewer?embedded=true&url=" + encodeURIComponent(cleaned); // Codifica corretamente
 }
 
 
-// Função searchAffixPDFs (Versão Original - Busca simples por inclusão, URL direta do CSV)
+// Função searchAffixPDFs (ATUALIZADA para usar window.search e limpar URLs)
 async function searchAffixPDFs(q){
   const list   = $('#affixList');
   const badge = $('#affixCount');
   try {
-    await loadAffixCSV(); // Garante que os dados brutos estejam carregados
+    await loadAffixCSV(); // Garante que o índice esteja carregado e construído
   } catch(e){
-    badge.textContent='Erro ao carregar lista de PDFs.';
-    list.textContent='Falha no carregamento: '+(e.message||e);
-    return;
+    // Erro já logado no loadAffixCSV
+    return; // Interrompe se o carregamento falhar
   }
 
-  const term = (q||'').toLowerCase().trim(); // Termo de busca normalizado
+  const term = (q||'').toLowerCase().trim();
 
-  if(!term){ badge.textContent=`${AFFIX_PDFS.length} PDFs carregados.`; list.textContent='—'; return; } // Mostra total se busca vazia
-
-  const tokens = term.split(/\s+/).filter(Boolean); // Quebra busca em palavras
-
-  // Lógica de filtro original: TODOS os tokens devem estar no nome OU url
-  const results = AFFIX_PDFS.filter(r =>
-    tokens.every(t =>
-      (r.name && r.name.toLowerCase().includes(t)) ||
-      (r.url  && r.url.toLowerCase().includes(t)) // Simple includes check
-    )
-  );
+  // Usa a função search global (que agora tem scoring) passando o índice construído
+  const results = window.search(AFFIX_INDEX, term); // Chama a função search principal com o índice
 
   badge.textContent = `${results.length} resultado(s)`;
   if(!results.length){ list.textContent='—'; return; }
 
-  list.innerHTML = ''; // Limpa lista
+  list.innerHTML = ''; // Limpa lista anterior
   let i = 0;
   function pump(){ // Adiciona resultados aos poucos
     const frag = document.createDocumentFragment();
     for(let k=0; k<10 && i<results.length; k++, i++){
-      const r = results[i];
+      const r = results[i]; // 'r' aqui é o objeto { name, url } retornado pelo search
       const row = document.createElement('div');
       row.className = 'affix-row';
 
-      // Usa a URL diretamente como lida do CSV (pode conter espaços/etc se o CSV tiver)
-      const urlFromFile = r.url ? String(r.url).trim() : '#'; // <<< ADICIONADO .trim() AQUI por segurança
-      const viewerUrl = googleViewerURL(urlFromFile); // Chama com a URL potencialmente limpa
+      // <<< CORREÇÃO URL APLICADA AQUI >>>
+      // Limpa a URL ANTES de usá-la
+      const cleanUrl = r.url ? String(r.url).trim() : '#';
+      const viewerUrl = googleViewerURL(cleanUrl); // Chama com a URL limpa
 
       row.innerHTML =
         `<div><b>${esc(r.name)}</b></div>
          <div class="affix-actions">
-           <button class="btn btn-plain" onclick="window.open('${urlFromFile}','_blank')" ${urlFromFile === '#' ? 'disabled' : ''}>Abrir</button>
-           <button class="btn btn-plain" onclick="toggleAffixPrev(${i})" ${urlFromFile === '#' ? 'disabled' : ''}>Prévia</button>
+           <button class="btn btn-plain" onclick="window.open('${cleanUrl}','_blank')" ${cleanUrl === '#' ? 'disabled' : ''}>Abrir</button>
+           <button class="btn btn-plain" onclick="toggleAffixPrev(${i})" ${cleanUrl === '#' ? 'disabled' : ''}>Prévia</button>
          </div>
          <div id="affix_prev_${i}" class="affix-prev">
            ${viewerUrl ? // Only render iframe if viewerUrl is valid
@@ -374,6 +478,7 @@ async function searchAffixPDFs(q){
              : '<p style="padding: 20px; text-align: center; color: var(--muted);">Prévia indisponível.</p>'
            }
          </div>`;
+       // <<< FIM DA CORREÇÃO >>>
       frag.appendChild(row);
     }
     list.appendChild(frag);
@@ -485,7 +590,7 @@ async function doSites(){
   const q=($('#qSites').value||'').trim();
   const sitesBusy = $('#sitesBusy');
   const outSites = $('#outSites');
-  // Chama a busca local de PDFs (versão original)
+  // Chama a busca local de PDFs (versão scoring + correção url)
   searchAffixPDFs(q);
   if(!q){ outSites.textContent='Digite a pergunta.'; return; }
   show(sitesBusy,true); outSites.textContent='—';
@@ -578,15 +683,15 @@ window.onload = function() {
     const btnCRION = $('#btnCRION');
     if(qCRION && btnCRION) qCRION.addEventListener('keydown', e=>{ if(e.key==='Enter') btnCRION.click(); });
 
-    // Helper para fechar widget (não estava definido antes)
+    // Helper para fechar widget
     function closeWidget(wrapId) {
        const el = document.getElementById(wrapId);
        if (el) el.style.display = 'none';
     }
 
-    // Carrega a lista de PDFs ao iniciar (para agilizar a primeira busca - versão original)
+    // Carrega a lista de PDFs ao iniciar (para agilizar a primeira busca - versão scoring + correção url)
     loadAffixCSV().catch(err => {
-      console.error("Falha inicial ao carregar CSV:", err);
+      // Erro já logado no console dentro da função
       $('#affixCount').textContent = 'Erro ao carregar lista.';
     });
 };
