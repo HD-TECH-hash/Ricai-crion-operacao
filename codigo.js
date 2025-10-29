@@ -1,4 +1,4 @@
-// codigo.js — CRION busca de alta precisão (index local, mínima alucinação) - VERSÃO ORIGINAL + CORREÇÃO URL + BUSCA UF/CIDADE REFINADA
+// codigo.js — CRION busca de alta precisão (index local, mínima alucinação) - VERSÃO ORIGINAL + CORREÇÃO URL + ASSOCIAÇÃO UF/CIDADE
 
 /* ========= UF: sigla ↔ nome (com e sem acento) ========= */
 const UF_MAP = {
@@ -32,36 +32,123 @@ const UF_MAP = {
 };
 /* ========= CIDADES e aliases (com/sem acento, hífen, cedilha) ========= */
 const CITY_ALIASES = {
-  "sao cristovao":[
-    "são cristovao","sao cristovão","são cristovão",
-    "s.cristovao","s cristovao","sao-cristovao","s cristovão","s.cristovão"
-  ],
-  "sao bernardo":[
-    "são bernardo","s bernardo","s.bernardo","sao-bernardo","sao bernado","samp" // SAMP = linha São Bernardo (ES)
-  ],
-  "sao jose dos campos":[ "sjc","s jose dos campos","s.jose dos campos","são josé dos campos" ],
-  "belo horizonte":[ "bh" ],
-  "rio de janeiro":[ "rj capital","rio" ],
-  "sao paulo":[ "são paulo","sp capital","sampa" ],
-  "porto alegre":[ "poa" ],
-  "cuiaba":[ "cuiabá" ],
-  "goiania":[ "goiânia" ],
-  "joao pessoa":[ "joão pessoa" ],
-  "tres lagoas":[ "três lagoas" ],
-  "mossoro":[ "mossoró" ],
-  "uberlandia":[ "uberlândia" ],
-  "ribeirao preto":[ "ribeirão preto" ],
-  "vitoria de santo antao":[ "vitória de santo antão" ],
-  "maranhao":[ "ma" ],
-  "amazonas":[ "am" ],
-  "sergipe":[ "se" ],
-  "pernambuco":[ "pe" ],
-  "para":[ "pará","pa" ]
+  "sao cristovao":["são cristovao","sao cristovão","são cristovão","s.cristovao","s cristovao","sao-cristovao","s cristovão","s.cristovão"], // SE? Adicionar mapeamento se souber
+  "sao bernardo":["são bernardo","s bernardo","s.bernardo","sao-bernardo","sao bernado","samp"], // SP / ES (samp)
+  "sao jose dos campos":[ "sjc","s jose dos campos","s.jose dos campos","são josé dos campos" ], // SP
+  "belo horizonte":[ "bh" ], // MG
+  "rio de janeiro":[ "rj capital","rio" ], // RJ
+  "sao paulo":[ "são paulo","sp capital","sampa" ], // SP
+  "porto alegre":[ "poa" ], // RS
+  "cuiaba":[ "cuiabá" ], // MT
+  "goiania":[ "goiânia" ], // GO
+  "joao pessoa":[ "joão pessoa" ], // PB
+  "tres lagoas":[ "três lagoas" ], // MS
+  "mossoro":[ "mossoró" ], // RN
+  "uberlandia":[ "uberlândia" ], // MG
+  "ribeirao preto":[ "ribeirão preto" ], // SP
+  "vitoria de santo antao":[ "vitória de santo antão" ], // PE
+  "ananindeua": ["ananindeua"], // PA
+  "marituba": ["marituba"], // PA
+  "manaus": ["manaus"], // AM
+  "imperatriz": ["imperatriz"], // MA
+  "sao luis": ["são luis", "sao luís", "são luís"], // MA
+  "teresina": ["teresina"], // PI
+  "fortaleza": ["fortaleza"], // CE
+  "juazeiro do norte": ["juazeiro do norte"], // CE
+  "aquiraz": ["aquiraz"], // CE
+  "beberibe": ["beberibe"], // CE
+  "caucaia": ["caucaia"], // CE
+  "chorozinho": ["chorozinho"], // CE
+  "itaitinga": ["itaitinga"], // CE
+  "maracanau": ["maracanaú"], // CE
+  "pacajus": ["pacajus"], // CE
+  "pacatuba": ["pacatuba"], // CE
+  "paracuru": ["paracuru"], // CE
+  "redencao": ["redenção"], // CE
+  "natal": ["natal"], // RN
+  "barauna": ["baraúna"], // RN
+  "macaiba": ["macaíba"], // RN
+  "campina grande": ["campina grande"], // PB
+  "cabedelo": ["cabedelo"], // PB
+  "conde": ["conde"], // PB (Assume PB, verificar se existe em outro estado)
+  "santa rita": ["santa rita"], // PB (Assume PB, verificar se existe em outro estado)
+  "recife": ["recife"], // PE
+  "abreu e lima": ["abreu e lima"], // PE
+  "aracoiaba": ["araçoiaba"], // PE (Assume PE)
+  "igarassu": ["igarassu"], // PE
+  "ipojuca": ["ipojuca"], // PE
+  "itamaraca": ["itamaracá"], // PE
+  "olinda": ["olinda"], // PE
+  "paulista": ["paulista"], // PE (Assume PE)
+  "pombos": ["pombos"], // PE
+  "jaboatao dos guararapes": ["jaboatão dos guararapes"], // PE
+  "sao lourenco da mata": ["são lourenço da mata"], // PE
+  "maceio": ["maceió"], // AL
+  "messias": ["messias"], // AL / BA (Precisa de desambiguação no nome do arquivo ou keywords se usar)
+  "rio largo": ["rio largo"], // AL
+  "camacari": ["camaçari"], // BA
+  "feira de santana": ["feira de santana"], // BA
+  "salvador": ["salvador"], // BA
+  "pocoes": ["poções"], // BA
+  "dias d avila": ["dias d'avila", "dias d avila"], // BA
+  "simoes filho": ["simões filho"], // BA
+  "aiquara": ["aiquara"], // BA
+  "jitauna": ["jitaúna"], // BA
+  "macarani": ["macarani"], // BA
+  "tremedal": ["tremedal"], // BA
+  "vitoria da conquista": ["vitória da conquista"], // BA
+  "aracaju": ["aracaju"], // SE
+  "barra dos coqueiros": ["barra dos coqueiros"], // SE
+  "anapolis": ["anápolis"], // GO
+  "uberaba": ["uberaba"], // MG
+  "jundiai": ["jundiaí"], // SP
+  "campo limpo paulista": ["campo limpo paulista", "campo limpo"], // SP
+  "curitiba": ["curitiba"], // PR
+  "londrina": ["londrina"], // PR
+  "maringa": ["maringá"], // PR
+  "balneario camboriu": ["balneário camboriú"], // SC
+  "joinville": ["joinville"], // SC
+  "araraquara": ["araraquara"], // SP
+  "bauru": ["bauru"], // SP
+  "franca": ["franca"], // SP
+  "limeira": ["limeira"], // SP
+  "lins": ["lins"], // SP
+  "sertaozinho": ["sertãozinho"], // SP
+  "campo grande": ["campo grande"], // MS
+  "dourados": ["dourados"] // MS
 };
+
+/* ========= NOVO: Mapeamento Cidade -> UF ========= */
+const CITY_TO_UF_MAP = {
+  "manaus": "am",
+  "belem": "pa", "parauapebas": "pa", "ananindeua": "pa", "marituba": "pa",
+  "sao luis": "ma", "imperatriz": "ma",
+  "teresina": "pi",
+  "fortaleza": "ce", "juazeiro do norte": "ce", "aquiraz": "ce", "beberibe": "ce", "caucaia": "ce", "chorozinho": "ce", "itaitinga": "ce", "maracanau": "ce", "pacajus": "ce", "pacatuba": "ce", "paracuru": "ce", "redencao": "ce",
+  "natal": "rn", "mossoro": "rn", "barauna": "rn", "macaiba": "rn",
+  "campina grande": "pb", "joao pessoa": "pb", "cabedelo": "pb", "conde": "pb", "santa rita": "pb",
+  "recife": "pe", "abreu e lima": "pe", "aracoiaba": "pe", "igarassu": "pe", "ipojuca": "pe", "itamaraca": "pe", "olinda": "pe", "paulista": "pe", "pombos": "pe", "jaboatao dos guararapes": "pe", "sao lourenco da mata": "pe", "vitoria de santo antao": "pe",
+  "maceio": "al", "rio largo": "al",
+  "camacari": "ba", "feira de santana": "ba", "salvador": "ba", "pocoes": "ba", "dias d avila": "ba", "simoes filho": "ba", "aiquara": "ba", "jitauna": "ba", "macarani": "ba", "tremedal": "ba", "vitoria da conquista": "ba",
+  // Messias aparece em AL e BA nos arquivos, difícil mapear sem contexto extra
+  "aracaju": "se", "barra dos coqueiros": "se",
+  "brasilia": "df",
+  "anapolis": "go", "goiania": "go",
+  "belo horizonte": "mg", "uberaba": "mg", "uberlandia": "mg",
+  "sao bernardo": "sp", // Considerando SP como padrão para S. Bernardo, 'samp' trata ES
+  "sao jose dos campos": "sp", "sao paulo": "sp", "ribeirao preto": "sp", "jundiai": "sp", "campo limpo paulista": "sp", "araraquara": "sp", "bauru": "sp", "franca": "sp", "limeira": "sp", "lins": "sp", "sertaozinho": "sp",
+  "curitiba": "pr", "londrina": "pr", "maringa": "pr",
+  "porto alegre": "rs",
+  "balneario camboriu": "sc", "joinville": "sc",
+  "campo grande": "ms", "dourados": "ms", "tres lagoas": "ms",
+  "cuiaba": "mt", "rondonopolis": "mt"
+  // Adicionar outras cidades importantes se necessário
+};
+
 /* ========= Token especial que “força” UF/cidade ========= */
 const SPECIAL_CITY_TOKENS = {
-  // “samp” no nome/consulta indica linha São Bernardo no ES
-  "samp": { city:"sao bernardo", uf:"es" }
+  // “samp” no nome/consulta indica linha São Bernardo no ES E força UF ES
+  "samp": { city:"sao bernardo", uf:"es", forceUF: true }
 };
 /* ========= Normalização (remove acento, til, cedilha etc.) ========= */
 const STOP = new Set(["de","da","do","das","dos","e","a","o","as","os","the"]);
@@ -109,14 +196,15 @@ function hasESManual(raw){
 // Usada tanto na busca exata quanto na refinada
 function passUFStrict(it, uf){
   if(!uf) return true; // Se não buscou por UF, passa
-  if(it.ufs.has(uf)) return true; // Se o item tem a UF marcada, passa
-  // Regras específicas (ex: ES-Manual)
+  // Verifica se o índice (agora enriquecido por buildIndex) contém a UF
+  if(it.ufs.has(uf)) return true;
+  // Regras específicas (ex: ES-Manual) ainda podem ser úteis como fallback
   if(uf==="es" && (hasESManual(it.nameRaw)||hasESManual(it.urlRaw))) return true;
-  // Verifica sigla forte no nome ou URL
+  // Verifica sigla forte no nome ou URL como fallback final
   return hasUFStrong(it.nameRaw, uf) || hasUFStrong(it.urlRaw, uf);
 }
 
-/* ========= Indexação (Versão Original - 2 colunas) ========= */
+/* ========= Indexação (Original + Associação Cidade->UF) ========= */
 function buildIndex(rows){
   const seen=new Set(), out=[];
   for(const r of rows){
@@ -137,23 +225,31 @@ function buildIndex(rows){
     const slug  = wordsSlug(nameRaw+" "+urlRaw);
     const kws   = new Set(tokenize(nameRaw).concat(tokenize(urlRaw)));
 
-    // --- Lógica de UFs e Cidades ---
+    // --- Lógica de UFs e Cidades (Refinada) ---
     const ufs=new Set();
+    // 1. Detecta UFs diretamente (nome, URL, sigla forte)
     for(const [uf_key,alts] of Object.entries(UF_MAP)){
       const altsN=[uf_key, ...alts.map(norm)];
-      // Verifica no slug (nome+url)
       if(altsN.some(a=>containsWord(slug,a))) ufs.add(uf_key);
-      // Verifica sigla forte
       else if(hasUFStrong(nameRaw,uf_key) || hasUFStrong(urlRaw,uf_key)) ufs.add(uf_key);
     }
     if(hasESManual(nameRaw) || hasESManual(urlRaw)) ufs.add("es"); // reforço ES-Manual
 
+    // 2. Detecta Cidades
     const cities=new Set();
     for(const [base,alts] of Object.entries(CITY_ALIASES)){
       const all=[base, ...alts.map(norm)];
-      if(all.some(a=>containsPhrase(slug,a))) cities.add(base);
+      if(all.some(a=>containsPhrase(slug,a))) {
+          cities.add(base);
+          // <<< NOVO: Associa cidade à UF >>>
+          const ufForCity = CITY_TO_UF_MAP[base];
+          if (ufForCity) {
+              ufs.add(ufForCity); // Adiciona a UF correspondente
+          }
+      }
     }
-    // -----------------------------
+    // <<< FIM DA ASSOCIAÇÃO >>>
+    // ------------------------------------
 
     out.push({ name:r.name, url:urlRaw, nameN, urlN, slug, kws, ufs, cities, dscore:dateScore({nameN}), nameRaw, urlRaw });
   }
@@ -161,69 +257,77 @@ function buildIndex(rows){
 }
 
 
-/* ========= Expansão de consulta (UF/cidade/aliases/tokens) ========= */
+/* ========= Expansão de consulta (UF/cidade/aliases/tokens - Refinada) ========= */
 function expandQuery(q){
   const qn    = norm(q);
   const parts = tokenize(qn);
+  let queryIsOnlyUF = false;
 
-  // Detecta UF e considera “apenas UF” se todos tokens são aliases dessa UF
+  // Detecta UF
   let uf=null;
   for(const [k,alts] of Object.entries(UF_MAP)){
     const aliasTokens = new Set([k, ...alts.flatMap(a=>tokenize(a))]);
     const allFromUF   = parts.length>0 && parts.every(t=>aliasTokens.has(t));
-    // Prioriza se a sigla exata (ex: 'mg') estiver na busca E for um alias de UF
     const hasExactSigla = parts.includes(k) && aliasTokens.has(k);
-    if( hasExactSigla || allFromUF || alts.some(a=>qn.includes(norm(a)))){
+     if( hasExactSigla || allFromUF || alts.some(a=>qn.includes(norm(a)))){
        uf=k;
+       if (allFromUF) queryIsOnlyUF = true; // Marca se a query SÓ tem termos da UF
        break;
     }
-  }
-  // Se detectou UF e a busca SÓ continha termos dessa UF, trava nela
-  if(uf){
-    const aliasTokensUF = new Set([uf, ...UF_MAP[uf].flatMap(a=>tokenize(a))]);
-    if(parts.every(t=>aliasTokensUF.has(t))) return {terms:new Set(), uf, queryIsOnlyUF: true}; // Marca que busca foi só UF
   }
 
   // Lock por cidade se a frase aparece
   for(const [base,alts] of Object.entries(CITY_ALIASES)){
     const all=[base,...alts.map(norm)];
     if(all.some(a=>qn.includes(a))){
-      // Remove termos da cidade da busca principal, mantém UF se houver
       const cityTokens = tokenize(base);
-      const remainingTerms = parts.filter(p => !cityTokens.includes(p));
-      const tset = new Set([...remainingTerms, ...(uf?[uf]:[])]);
-      return {terms:tset, uf, cityLock:base};
+      // Remove termos da cidade E da UF associada (se houver) da busca principal
+      const ufForCity = CITY_TO_UF_MAP[base];
+      const ufTokensToRemove = ufForCity ? [ufForCity, ...UF_MAP[ufForCity].flatMap(x=>tokenize(x))] : [];
+      const tokensToRemove = new Set([...cityTokens, ...ufTokensToRemove]);
+      const remainingTerms = parts.filter(p => !tokensToRemove.has(p));
+      // Usa a UF da cidade encontrada como UF principal, se não havia outra
+      const finalUF = uf || ufForCity;
+      return {terms: new Set(remainingTerms), uf: finalUF, cityLock: base, queryIsOnlyUF: false};
     }
   }
 
-  // Tokens especiais
+  // Tokens especiais (ex: samp -> ES)
   for(const [tok,rule] of Object.entries(SPECIAL_CITY_TOKENS)){
     if(parts.includes(tok)){
-      const lockUF = uf || rule.uf;
-      const remainingTerms = parts.filter(p => p !== tok && !tokenize(rule.city).includes(p));
-      return {terms:new Set([...remainingTerms, lockUF]), uf:lockUF, cityLock:rule.city};
+      const lockUF = rule.forceUF ? rule.uf : (uf || rule.uf); // Força UF se rule.forceUF
+      const cityTokens = tokenize(rule.city);
+      const ufTokensToRemove = lockUF ? [lockUF, ...UF_MAP[lockUF].flatMap(x=>tokenize(x))] : [];
+      const tokensToRemove = new Set([tok, ...cityTokens, ...ufTokensToRemove]);
+      const remainingTerms = parts.filter(p => !tokensToRemove.has(p));
+      return {terms: new Set(remainingTerms), uf: lockUF, cityLock: rule.city, queryIsOnlyUF: false};
     }
   }
 
-  // Expansão leve: se algum token for alias de cidade, adiciona base
-  // Remove os termos da UF da busca principal se UF foi detectada
+  // Se a busca era SÓ pela UF, retorna termos vazios
+  if (queryIsOnlyUF) {
+      return {terms: new Set(), uf, cityLock: null, queryIsOnlyUF: true};
+  }
+
+  // Remove termos da UF da busca principal se UF foi detectada
   const finalTerms = new Set(parts);
   if (uf) {
       const ufAliasTokens = new Set([uf, ...UF_MAP[uf].flatMap(a=>tokenize(a))]);
       ufAliasTokens.forEach(t => finalTerms.delete(t)); // Remove termos da UF
-      finalTerms.add(uf); // Garante que a sigla UF esteja nos termos para match
+      // Não adiciona UF aos termos aqui, será usado no filtro passUFStrict
   }
 
   return {terms:finalTerms, uf, cityLock: null, queryIsOnlyUF: false};
 }
 
-/* ========= Busca (Original Modificada para UF/Cidade) ========= */
+/* ========= Busca (Original Modificada para UF/Cidade Refinada) ========= */
 function search(index,q){
   if(!index?.length) return [];
   const qn = norm(q||""); if(!qn) return [];
 
   const {hasAffix,hasAlter} = detectBrands(qn);
-  const {terms, uf, cityLock, queryIsOnlyUF} = expandQuery(q); // Pega UF e cityLock
+  // Obtém termos (sem UF/Cidade), UF detectada, Cidade detectada, e flag se busca foi só UF
+  const {terms, uf, cityLock, queryIsOnlyUF} = expandQuery(q);
 
   const brandFilter = hasAffix || hasAlter;
   const passBrand = it =>
@@ -245,52 +349,67 @@ function search(index,q){
     }
   }
 
-  // Se já achou match exato, prioriza eles, mas permite outros resultados se busca não for só UF/Cidade
   const hasExact = results.length > 0;
 
-  // 2) Lógica Refinada:
+  // 2) Lógica Refinada: Considera UF/Cidade e termos restantes
   for(const it of index){
     // Evita duplicar se já está nos resultados exatos
     if (hasExact && results.some(r => r.it === it)) continue;
 
     // Aplica filtros de marca, UF e cidade
+    // passUFStrict agora funciona melhor porque buildIndex associa cidade->UF
     if(!passBrand(it) || !passUFStrict(it,uf) || !passCity(it)) continue;
 
     let currentScore = 0;
     let termsFoundCount = 0;
 
-    // Se a busca foi SÓ pela UF (ex: "minas gerais"), OU só pela cidade (ex: "belo horizonte")
-    // E o item passou nos filtros passUFStrict e passCity, ele é relevante.
-    if ((queryIsOnlyUF && terms.size === 0) || (cityLock && terms.size === 0)) {
-        currentScore = 500; // Pontuação base para match geográfico puro
-        termsFoundCount = 1; // Considera como 1 termo encontrado (o geográfico)
+    // Caso 1: A busca foi SÓ pela UF OU SÓ pela Cidade
+    if ((queryIsOnlyUF && !cityLock) || (cityLock && terms.size === 0 && !uf)) {
+        // Se passou nos filtros, já é um resultado relevante
+        currentScore = 500; // Pontuação base para match geográfico
     }
-    // Se a busca tem outros termos além dos geográficos
+    // Caso 2: A busca tinha termos além da UF/Cidade
     else if (terms.size > 0) {
         let termMatchScore = 0;
+        let allTermsFound = true; // Assume que todos serão encontrados
         terms.forEach(t => {
             if (containsWord(it.slug, t) || it.kws.has(t)) {
-                termMatchScore += 10; // Pontuação base por termo
+                termMatchScore += 10; // Pontuação por termo
                 termsFoundCount++;
+            } else {
+                allTermsFound = false; // Se um termo faltar, marca como falso
             }
         });
 
-        // Só considera o resultado se pelo menos UM termo (além da UF/cidade) foi encontrado
-        // OU se a busca era SÓ a UF/cidade (tratado acima)
+        // Só considera o resultado se PELO MENOS UM termo foi encontrado
         if (termsFoundCount > 0) {
             currentScore = termMatchScore;
-            // Bônus se TODOS os termos foram encontrados (AND original)
-            if (termsFoundCount === terms.size) {
+            // Bônus se TODOS os termos foram encontrados (como no AND original)
+            if (allTermsFound) {
                 currentScore += 500;
             }
         }
     }
+    // Caso 3: Busca vazia OU busca geográfica sem match (já filtrado antes)
+    else {
+        // Não pontua se não era busca geográfica pura e não encontrou termos
+        // (Exceto se for match exato, já tratado)
+        continue;
+    }
+
 
     // Adiciona ao resultado APENAS se teve alguma pontuação
     if (currentScore > 0) {
         // Adiciona score de data
         currentScore += it.dscore / 100;
-        results.push({it, score: currentScore});
+        // Adiciona um pequeno bônus se a UF específica foi explicitamente encontrada no item, mesmo que não na busca
+        if (uf && it.ufs.has(uf)) currentScore += 5;
+        if (cityLock && it.cities.has(cityLock)) currentScore += 10;
+
+        // Verifica se já não foi adicionado pelo match exato
+        if (!results.some(r => r.it === it)) {
+             results.push({it, score: currentScore});
+        }
     }
   }
 
@@ -301,7 +420,7 @@ function search(index,q){
 }
 
 
-/* ========= Carregamento CSV e Busca (Interface - Original com Correção URL) ========= */
+/* ========= Carregamento CSV e Busca (Interface - Original com Correção URL e buildIndex ajustado) ========= */
 const AFFIX_CSV_URL = "data/affix/affix_pdfs_manifest.csv";
 let AFFIX_PDFS = []; // Guarda os dados brutos parseados
 let AFFIX_INDEX = []; // Guarda o índice construído
@@ -318,7 +437,7 @@ async function loadAffixCSV(){
     }
     const text = await res.text();
     AFFIX_PDFS = parseAffixCSV(text); // Parseia o CSV (espera 2 colunas)
-    AFFIX_INDEX = buildIndex(AFFIX_PDFS); // Constrói o índice (espera 2 colunas)
+    AFFIX_INDEX = buildIndex(AFFIX_PDFS); // Constrói o índice (agora associa cidade->UF)
     badge.textContent = `${AFFIX_INDEX.length} PDFs indexados.`;
   } catch (e) {
       badge.textContent = 'Erro ao carregar lista.';
@@ -368,7 +487,7 @@ function googleViewerURL(fileUrl){
 }
 
 
-// Função searchAffixPDFs (ATUALIZADA para usar window.search e limpar URLs)
+// Função searchAffixPDFs (ATUALIZADA para usar window.search refinado e limpar URLs)
 async function searchAffixPDFs(q){
   const list   = $('#affixList');
   const badge = $('#affixCount');
@@ -528,7 +647,7 @@ async function doSites(){
   const q=($('#qSites').value||'').trim();
   const sitesBusy = $('#sitesBusy');
   const outSites = $('#outSites');
-  // Chama a busca local de PDFs (versão original com correção de URL)
+  // Chama a busca local de PDFs (versão original com correção URL e associação UF/Cidade)
   searchAffixPDFs(q);
   if(!q){ outSites.textContent='Digite a pergunta.'; return; }
   show(sitesBusy,true); outSites.textContent='—';
@@ -627,7 +746,7 @@ window.onload = function() {
        if (el) el.style.display = 'none';
     }
 
-    // Carrega a lista de PDFs ao iniciar (versão original com correção URL)
+    // Carrega a lista de PDFs ao iniciar (versão original com correção URL e associação UF/Cidade)
     loadAffixCSV().catch(err => {
       console.error("Falha inicial ao carregar CSV:", err);
       $('#affixCount').textContent = 'Erro ao carregar lista.';
